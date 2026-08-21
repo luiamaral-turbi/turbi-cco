@@ -46,7 +46,7 @@ export function heatColor(t: number) {
   if (clamped <= 0.001) return "#FFFFFF";
   const from = [0xfb, 0xe9, 0xe9];
   const to = [0xb9, 0x1c, 0x1c];
-  const mix = from.map((f, i) => Math.round(f + (to[i] - f) * clamped));
+  const mix = from.map((f, i) => Math.round(f + ((to[i] ?? f) - f) * clamped));
   return `#${mix.map((c) => c.toString(16).padStart(2, "0")).join("")}`;
 }
 
