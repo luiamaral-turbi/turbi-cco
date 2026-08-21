@@ -1,114 +1,90 @@
-# CCO - Cento de Controle de Operações
+# turbi-cco — Centro de Controle de Operações
 
-Quero criar um "Centro de Controle de Operações" da Turbi (locadora digital de veículos) — um app web multi-abas. A primeira aba se chama "RMR" (Reunião Mensal de Resultados) e mostra os 3 indicadores centrais da minha área. Abas futuras (ainda não vamos construir agora) serão estratificações/detalhamentos de cada tema.
+Painel ao vivo dos 3 indicadores centrais da RMR (Reunião Mensal de Resultados) de Operações da Turbi:
+**COGS (OPEX)**, **Indisponibilidade OPS** e **Claim/APV** (reclamação pós-viagem). Site estático,
+sem backend próprio, sem build — abrir `index.html` já é o produto final.
 
-Já validei tudo isso num protótipo local (Python/FastAPI) — quero que você reconstrua EXATAMENTE esse layout e essas fórmulas, não invente nada novo. Depois de criar o projeto, vou conectar ao GitHub pela sua própria integração.
+## Arquitetura
 
-## Estrutura visual (aba "RMR")
-
-Header fixo: logo/marca "turbi", título "RMR - Painel ao vivo", e um botão "🔄 Atualizar dados" que recarrega os 3 indicadores.
-
-Paleta: fundo off-white (#FFFFED), texto quase-preto (#1B1B1B), cinza médio (#525252), azul de marca (#231DB0), verde de "dentro da meta" (#17804A, fundo suave #E6F4EC), vermelho de "acima da meta" (#B91C1C, fundo suave #FBE9E9). Tipografia: Segoe UI / system-ui. Cards com cantos arredondados (10px), borda sutil (#E3E0CC).
-
-**Cores categóricas (séries de gráfico com várias categorias)**: nunca usar cores variadas tipo arco-íris — usar uma rampa única cinza-azulada dessaturada (quase neutra), do escuro pro claro: `#232733, #2E3340, #3A4050, #474E60, #555D70, #646C80, #747C90, #8790A0, #9AA1B0, #AEB4C0, #C3C8D0, #D8DBE0`. Vermelho e verde ficam reservados só pra status (real vs meta), nunca pra identidade de categoria.
-
-### Seção 1 — COGS (OPEX)
-
-Fonte: planilha Google Sheets "Acompanhamento COGS 2026" (uma cópia própria via IMPORTRANGE compartilhada por link público — export CSV: `https://docs.google.com/spreadsheets/d/{id}/gviz/tq?tqx=out:csv&sheet={nome_da_aba}`, sem autenticação nenhuma, dá pra buscar direto do frontend).
-
-- 2 hero cards: "Total 7 linhas — 2026 (taxa média)" e "Total COGS (9 linhas) x Meta Total da área".
-
-- Gráfico empilhado com as 9 linhas (as 7 minhas: Cleaning, Damage, Vehicle Maintenance, Vehicle Supplies, Desmobilization, Logistical, Other COGS — + 2 fora do meu escopo: Points of Location, Monitoring Services) vs Meta Total, incluindo uma coluna extra "YTD" no final.
-
-- Gráfico empilhado só das 7 minhas vs meta, também com coluna YTD.
-
-- Grid com um gráfico individual por linha (das 9): barra = Real, colorida de verde se Real ≤ Budget daquele mês e vermelho se acima; linha tracejada = Budget (meta).
-
-- Tabela "Previsto x Real, por linha": cada célula mostra o Real em destaque (verde/vermelho conforme vs budget) com o Budget menor embaixo. Coluna YTD = coluna "2026" da planilha (é uma taxa média do ano, não soma dos 12 meses — importante, não somar).
-
-- Tabela separada "Linhas fora do escopo Ops" (Points of Location + Monitoring Services), mesmo formato.
-
-- Mapeamento de células da planilha (buscar por nome, nunca por número de linha fixo — a estrutura pode mudar): procurar a linha cujo texto é "COGS./VHC" — a partir dali, achar as linhas por nome (Cleaning, Damage, etc.). Cada mês ocupa colunas [Budget, Real, Delta%, DeltaR$]; a coluna "2026" fica no final da linha.
-
-### Seção 2 — Indisponibilidade OPS
-
-Fonte: BigQuery, projeto `turbi-dc-ops`, tabela `ops_geral.vw_frota_historico_contabil`. Fórmula (já validada, bate exato com os números oficiais): `% categoria = SUM(segundos_no_status WHERE status_ajustado = categoria) / SUM(segundos_no_status total)`, por mês, SEM filtrar veículos de teste/excluídos.
-
-12 categorias somam o KPI: Sinistro, Lavagem/Preparação, Prep. Desmobilização, Outros, Mudança de Pod, Revisão, Bateria baixa, Manut. Pneus, Sem Comunicação, Manut. IOT, Falha de Instalação, Operational.
-
-- 3 hero cards: mês mais recente (BQ direto) x meta, YTD x meta anual, pior mês do período.
-
-- Gráfico de barras (real, verde/vermelho vs meta) + linha tracejada de meta, incluindo coluna YTD no final.
-
-- Gráfico empilhado por categoria + linha de meta total, com coluna YTD. Categorias ORDENADAS da maior pra menor (por valor YTD) — essa mesma ordem e cor tem que valer no gráfico, na legenda E na tabela abaixo (os três sempre batendo).
-
-- Tabela em **mapa de calor**: escala ÚNICA pra tabela inteira (não por linha!) — 0% = branco/quase branco, o MAIOR valor de qualquer categoria/mês/YTD do período = vermelho de marca (#B91C1C, partindo de um tom bem claro #FBE9E9). Não escalar por categoria, senão uma categoria pequena (tipo 0,05%) fica parecendo tão grave quanto uma grande (tipo 6%). Coluna YTD entra na mesma escala. Linha final "Cálculo BQ direto" (o total) fica fora do mapa de calor — usa verde/vermelho simples vs meta.
-
-- Visão idêntica espelhada, mas filtrada só pra frota de Campinas (`podCity = 'Campinas'`) — mesmos gráficos, mesmo heatmap, logo abaixo da visão nacional.
-
-### Seção 3 — Claim/APV (reclamação pós-viagem)
-
-Fonte: BigQuery, tabela `atendimento.vw_post_trip_review_por_item`. 3 componentes, fórmula = bookings distintos com reclamação naquela categoria / total de bookings avaliados no mês:
-
-- **Wash**: `review_item_category = 'Limpeza e cheiro'`
-
-- **Damage**: `review_item_category = 'Avarias no veículo'` EXCLUINDO `ReviewItemLabel = 'Cars'` (rótulo genérico que infla contagem sem ser reclamação real)
-
-- **POD**: `review_item_category = 'Estacionamento'` EXCLUINDO `ReviewItemName = 'Vagas'` (mesmo problema)
-
-- APV Soma = Wash + Damage + POD
-
-Pra filtrar por Campinas: a tabela de reviews não tem cidade direto — precisa de JOIN por `podid` com `ops_geral.vw_frota_historico_contabil` pra pegar `podCity`.
-
-- 2 hero cards: mês mais recente x meta, YTD x meta anual.
-
-- Gráfico empilhado (Wash+Damage+POD) + linha de meta, com coluna YTD.
-
-- Tabela colorida igual o padrão do COGS (real em destaque verde/vermelho vs meta, meta menor embaixo), uma linha por componente + linha "Soma".
-
-- Mesma visão espelhada pra Campinas, logo abaixo.
-
-### Metas (Indisponibilidade e Claim/APV)
-
-Vêm de uma segunda planilha Google Sheets (mesmo mecanismo de CSV público), abas "Metas - Operações Execução" e "Metas - Fleet Management". Buscar por nome do indicador na coluna B, meta anual na coluna F, meta mensal (Jan-Dez) nas colunas K:V. Indisponibilidade e Wash ficam na aba "Operações Execução"; Damage e POD na aba "Fleet Management" (atenção: Damage aparece 2x nessa aba — usar só a versão cuja célula de meta anual tem "%", a outra está com formatação quebrada em R$). Meta de APV Total = soma das metas de Wash + Damage + POD.
-
-Meta de COGS vem da própria planilha de COGS (linha "COGS OPS", coluna Budget) — não dessa segunda planilha.
-
-## Arquitetura — importante
-
-Não preciso armazenar nenhum dado — tudo já existe no BigQuery e nas planilhas, o app só lê ao vivo a cada carregamento/atualização (sem cache, sem histórico salvo).
-
-- **COGS e Metas** (Google Sheets): busca direto do frontend via fetch no link CSV público, sem backend nenhum.
-
-- **Indisponibilidade e Claim/APV** (BigQuery): NÃO dá pra consultar direto do navegador com segurança. Preciso de UMA Supabase Edge Function que guarda a credencial (service account do Google Cloud, projeto `turbi-dc-ops`) como secret e faz a consulta ao BigQuery, devolvendo o JSON já pronto pro frontend.
-
-- **Restrição explícita: usar Supabase (projeto próprio), NÃO usar Lovable Cloud.** Não preciso do banco de dados do Supabase pra nada disso — só da Edge Function e do gerenciamento de secrets. Não crie tabelas nem estrutura de banco além do estritamente necessário pra rodar a function (se é que precisa de alguma).
-
-- Ainda não tenho essa service account do GCP criada — vou resolver isso com quem administra o projeto `turbi-dc-ops` e colar a credencial no secret da Edge Function depois. Pode montar a function já esperando essa credencial via variável de ambiente/secret.
-
-## Sobre as próximas abas (não construir agora, só ter em mente)
-
-Cada aba futura vai ser uma estratificação de um dos 3 temas (ex.: Claim aberto por sub-item tipo "sujo por dentro/fora"; Indisponibilidade cruzada com regras de classificação STATUS×SUBSTATUS→Gestor de outro projeto interno meu — ainda preciso reconciliar isso com a fórmula desta aba RMR antes de construir essa aba específica). Não infira o conteúdo dessas abas — vou pedir uma de cada vez.
-
-This project was built with [Lovable](https://lovable.dev).
-
-**Live app**: https://turbi-cco.lovable.app
-
-## Build with Lovable
-
-Continue developing this project in the [Lovable editor](https://lovable.dev/projects/ca8a4d1c-a34a-4aca-b51d-400afba888cb).
-
-- **Ship faster**: describe what you want to build and Lovable handles the code.
-- **Stay in sync**: every change made in Lovable is committed straight to this repository.
-- **Full ownership**: this code is yours. Push to `main` on GitHub and your changes sync back into Lovable, ready for your next prompt.
-
-## Development
-
-Prefer working locally? You need Node.js and npm — [install with nvm](https://github.com/nvm-sh/nvm#installing-and-updating).
-
-```sh
-git clone <this-repository-url>
-cd <repository-name>
-npm i
-npm run dev
 ```
+                         ┌───────────────────────────┐
+  Google Sheets  ───CSV──▶  index.html (navegador)   │◀── GitHub Pages (hospedagem)
+  (COGS + Metas)          │  parse client-side        │
+                         │                            │
+  BigQuery       ───JSON──▶  Google Apps Script        │
+  (via BigQuery           (Web App, apps-script/       │
+   Advanced Service)       Code.gs — cópia de           │
+                          referência neste repo)        │
+                         └───────────────────────────┘
+```
+
+- **COGS e Metas**: lidos direto do navegador via export CSV público do Google Sheets
+  (`gviz/tq?tqx=out:csv`), sem autenticação — parsing feito em `index.html` (funções `getCogsData()`
+  e `getMetasData()`).
+- **Indisponibilidade e Claim/APV**: consultados no BigQuery por um **Google Apps Script publicado
+  como Web App** (`apps-script/Code.gs`), autorizado com a conta Google do responsável pelo painel —
+  sem service account, sem credencial armazenada em lugar nenhum. O código-fonte aqui é só a cópia
+  de referência; a implantação real é feita manualmente em [script.google.com](https://script.google.com).
+- **Hospedagem**: GitHub Pages, servindo `index.html` direto da raiz da branch `main`. Sem servidor,
+  sem build, sem deploy — só `git push`.
+- Botão **"🔄 Atualizar dados"** refaz as 6 consultas (2× BigQuery via Apps Script, 2× CSV de Sheets)
+  em tempo real, no navegador de quem estiver com a página aberta.
+
+Todas as fórmulas replicam exatamente o painel local original (FastAPI + BigQuery), que foi a versão
+validada numericamente contra o dashboard oficial antes de qualquer migração. Ver
+`apps-script/Code.gs` para os comentários com a origem de cada fórmula.
+
+## Rodar/testar localmente
+
+Não há build. Basta abrir `index.html` num navegador (ou servir com qualquer servidor estático,
+ex. `npx serve .`), desde que a constante `APPS_SCRIPT_URL` no topo do `<script>` esteja apontando
+pra uma implantação válida do Apps Script.
+
+## Como reimplantar o Apps Script (depois de editar `apps-script/Code.gs`)
+
+1. Abrir o projeto em [script.google.com](https://script.google.com) (mesma conta Google usada na
+   implantação atual).
+2. Colar o conteúdo atualizado de `apps-script/Code.gs` no editor (substituindo tudo), `Ctrl+S`.
+3. Rodar a função `testeManual` pelo menos uma vez e conferir o **Registro de execução** — os números
+   devem bater com os já certificados antes de seguir.
+4. `Implantar → Gerenciar implantações → editar (ícone de lápis) → Nova versão → Implantar`.
+   **Importante**: reimplantar sem criar uma "Nova versão" mantém o código antigo no ar — sempre
+   escolher "Nova versão".
+5. A URL do Web App (campo `APPS_SCRIPT_URL` em `index.html`) só muda se uma implantação **nova**
+   (não uma versão da mesma implantação) for criada. Reimplantar a mesma implantação preserva a URL.
+6. Conferir em **"Quem pode acessar"** que continua **"Qualquer pessoa"** — se vier como "Qualquer
+   pessoa dentro de turbi.com.br", o site vai pedir login do Google em vez de mostrar os dados
+   (já aconteceu uma vez nesta migração).
+
+## Se algo quebrar — checklist
+
+- **Página carrega mas fica em "Falha ao atualizar"**: abrir o Console do navegador (F12) — a
+  mensagem de erro identifica qual das 6 fontes falhou (Indisponibilidade, Claim/APV, nacional ou
+  Campinas, COGS, Metas).
+- **Erro mencionando `APPS_SCRIPT_URL`**: a URL do Web App mudou (nova implantação) ou expirou —
+  pegar a URL atual em `script.google.com → Implantar → Gerenciar implantações` e atualizar a
+  constante no topo do `<script>` em `index.html`.
+- **Indisponibilidade/Claim retornam página de login do Google em vez de JSON**: a implantação caiu
+  pra acesso restrito ao domínio — ver passo 6 acima.
+- **COGS/Metas com erro "planilha não encontrada" ou "linha não encontrada"**: a planilha de origem
+  (`103v2gA7a24QAT73yXbyTnSdWxZjAsh4bZOMzkdHEghg`) mudou de estrutura — os nomes de aba, o marcador
+  `"COGS./VHC"` ou os rótulos de meta em `index.html` precisam ser conferidos contra a planilha atual.
+- **Números batendo errado**: nunca ajustar arredondamento/fórmula direto no `index.html` ou no
+  `Code.gs` sem revalidar contra os números já certificados — ver `CHANGELOG.md` e a nota "Glossário
+  e Fórmulas" no Obsidian (`Notas Obsidian/RMR OPS/`) para o histórico de validação.
+
+## Limitações conhecidas (herdadas do painel original, não mudou nesta migração)
+
+- COGS tem `meses` fixo em 7 (Jan–Jul) — precisa ser estendido manualmente no código conforme o ano
+  avança (`COGS_MONTH_STARTS`/`COGS_MESES` em `index.html`).
+- Mês corrente sempre aparece parcial (a consulta ao BigQuery vai até "ontem").
+- Estratificação de Claim (abrir Wash/Damage/POD em sub-itens) está fora de escopo desta rodada.
+- Layout pensado para desktop — adaptação mobile-first ainda não foi feita.
+
+## Documentação relacionada
+
+- `apps-script/Code.gs` — código do Web App, com o SQL e os comentários de origem de cada fórmula.
+- `CHANGELOG.md` — histórico de mudanças de arquitetura e fórmulas.
+- `Notas Obsidian/RMR OPS/` (fora deste repo) — base de conhecimento completa: decisões de
+  arquitetura, glossário/fórmulas validadas, e a nota "Runbook" com o mesmo checklist operacional
+  acima em formato mais informal.

@@ -1,0 +1,730 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>RMR - Painel ao vivo</title>
+<style>
+  :root {
+    --bg: #FFFFED;
+    --surface: #FFFFFF;
+    --surface-2: #F4F1DE;
+    --ink: #1B1B1B;
+    --muted: #525252;
+    --line: #E3E0CC;
+    --navy: #111D36;
+    --navy-ink: #FFFFED;
+    --blue: #231DB0;
+    --blue-soft: #EDECFB;
+    --standard: #1C86D9;
+    --standard-soft: #E7F3FD;
+    --purple: #7A1FE0;
+    --purple-soft: #F3E9FE;
+    --teal: #0E8FA0;
+    --teal-soft: #E3F4F6;
+    --good: #17804A;
+    --good-soft: #E6F4EC;
+    --critical: #B91C1C;
+    --critical-soft: #FBE9E9;
+    --chart-axis: #C9C6AE;
+    --chart-lbl: #7A7861;
+    --meta-line: #6E6F73;
+  }
+  * { box-sizing: border-box; }
+  html { color-scheme: light; }
+  body {
+    margin: 0; background: var(--bg); color: var(--ink);
+    font-family: "Segoe UI", -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+    font-size: 15.5px; line-height: 1.5; padding: 0 0 64px;
+  }
+  .wrap { max-width: 1120px; margin: 0 auto; padding: 0 22px; }
+
+  .masthead { background: var(--navy); color: var(--navy-ink); padding: 26px 22px; border-radius: 0 0 18px 18px; }
+  .masthead-inner { max-width: 1120px; margin: 0 auto; display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
+  .brandmark { display:inline-flex; align-items:center; gap:8px; background:var(--blue); color:#fff; padding:5px 14px 6px; border-radius:8px 8px 8px 2px; font-weight:800; font-size:15px; margin-bottom:10px; }
+  h1.title { font-size:22px; font-weight:800; letter-spacing:-.01em; margin:0; }
+  .status-row { display:flex; align-items:center; gap:12px; flex-wrap: wrap; }
+  #refresh-btn { background: var(--blue); color: #fff; border: none; border-radius: 8px; padding: 10px 18px; font-size: 14px; font-weight: 700; cursor: pointer; display: inline-flex; align-items: center; gap: 8px; }
+  #refresh-btn:hover { background: #2b24d6; }
+  #refresh-btn:disabled { opacity: .6; cursor: wait; }
+  #last-update { font-size: 12.5px; opacity: .75; }
+  #status-msg { font-size: 12.5px; }
+  #status-msg.err { color: #ffb4b4; }
+
+  h2.sec-title { font-size:20px; font-weight:800; letter-spacing:-.01em; margin:0 0 3px; }
+  .sec-head { display:flex; align-items:baseline; gap:12px; margin:40px 0 4px; }
+  .sec-num { font-weight:800; font-size:13px; letter-spacing:.06em; padding:3px 9px; border-radius:6px; flex:none; }
+  .sec-owner { font-size:13px; color:var(--muted); margin:0 0 20px; }
+  .sec-cogs .sec-num { background:var(--blue-soft); color:var(--blue); }
+  .sec-indisp .sec-num { background:var(--standard-soft); color:var(--standard); }
+  .sec-claim .sec-num { background:var(--purple-soft); color:var(--purple); }
+
+  .subhead { font-size:11.5px; font-weight:800; letter-spacing:.1em; text-transform:uppercase; color:var(--muted); margin:26px 0 12px; padding-bottom:8px; border-bottom:1px solid var(--line); }
+  .sub-note { font-weight:400; text-transform:none; letter-spacing:0; font-size:11.5px; margin-left:6px; }
+  .campinas-block { margin-top:28px; padding-top:18px; border-top:2px dashed var(--line); }
+  .campinas-tag { display:inline-block; font-size:10px; font-weight:800; letter-spacing:.08em; text-transform:uppercase; padding:2px 8px; border-radius:5px; background:var(--teal-soft); color:var(--teal); margin-left:8px; vertical-align:middle; }
+
+  .hero-row { display:grid; grid-template-columns:repeat(auto-fit,minmax(200px,1fr)); gap:12px; margin-bottom:18px; }
+  .hero-card { background:var(--surface); border:1px solid var(--line); border-radius:10px; padding:16px 18px; border-top:3px solid var(--standard); }
+  .hero-card.c-claim { border-top-color:var(--purple); }
+  .hero-card.c-cogs { border-top-color:var(--blue); }
+  .hero-eye { font-size:10.5px; font-weight:800; letter-spacing:.1em; text-transform:uppercase; color:var(--muted); margin-bottom:6px; }
+  .hero-num { font-size:26px; font-weight:800; letter-spacing:-.02em; font-variant-numeric:tabular-nums; }
+  .hero-sub { font-size:12.5px; color:var(--muted); margin-top:4px; }
+
+  .card { background:var(--surface); border:1px solid var(--line); border-radius:10px; padding:15px 17px; }
+  .card-title { font-size:13px; font-weight:700; margin-bottom:1px; }
+
+  .chart-svg { width:100%; height:auto; display:block; }
+  .chart-val { font-size:11.5px; fill:var(--ink); font-weight:700; font-variant-numeric:tabular-nums; }
+  .chart-lbl { font-size:10.5px; fill:var(--chart-lbl); font-weight:600; }
+  .chart-axis { stroke:var(--chart-axis); stroke-width:1; }
+  .chart-meta { stroke:var(--meta-line); stroke-width:1.4; stroke-dasharray:3 2; }
+  .chart-meta-dot { fill:var(--meta-line); }
+  .legend-row { display:flex; gap:12px; font-size:11px; color:var(--muted); margin-top:8px; flex-wrap:wrap; }
+  .legend-item { display:flex; align-items:center; gap:5px; }
+  .legend-sw { width:9px; height:9px; border-radius:2px; flex:none; }
+  .legend-line { width:12px; height:0; border-top:1.6px dashed var(--meta-line); flex:none; }
+
+  .tbl-wrap { overflow-x:auto; }
+  table.dtbl { width:100%; border-collapse:collapse; font-size:12.5px; min-width:460px; }
+  table.dtbl th { text-align:left; font-size:10.5px; font-weight:800; letter-spacing:.06em; text-transform:uppercase; color:var(--muted); padding:0 8px 8px 0; border-bottom:1px solid var(--line); }
+  table.dtbl td { padding:7px 8px 7px 0; border-bottom:1px solid var(--line); font-variant-numeric:tabular-nums; }
+  table.dtbl tr:last-child td { border-bottom:none; }
+  table.dtbl td.num, table.dtbl th.num { text-align:right; }
+  table.dtbl tr.tot td { font-weight:800; border-top:2px solid var(--line); }
+  table.dtbl.cogswide td.num, table.dtbl.cogswide th.num { text-align:center; vertical-align:top; }
+  .grid-lines { display:grid; grid-template-columns:repeat(auto-fit,minmax(260px,1fr)); gap:14px; margin-bottom:16px; }
+  .cc-real { font-weight:800; font-variant-numeric:tabular-nums; }
+  .cc-budget { font-size:10px; color:var(--muted); font-weight:400; font-variant-numeric:tabular-nums; }
+  .cc-good { color:var(--good); }
+  .cc-bad { color:var(--critical); }
+
+  #tt-tooltip { position:fixed; pointer-events:none; background:var(--navy); color:var(--navy-ink); font-size:12px; font-weight:600; padding:5px 10px; border-radius:6px; opacity:0; z-index:1000; transition:opacity .08s; white-space:nowrap; }
+  .note { font-size:12px; color:var(--muted); margin:8px 0 16px; }
+  .loading-veil { opacity: .45; pointer-events: none; transition: opacity .15s; }
+</style>
+</head>
+<body>
+
+<div id="tt-tooltip"></div>
+<div class="masthead">
+  <div class="masthead-inner">
+    <div>
+      <div class="brandmark">turbi</div>
+      <h1 class="title">RMR - Painel ao vivo</h1>
+    </div>
+    <div class="status-row">
+      <span id="status-msg"></span>
+      <span id="last-update">nunca atualizado</span>
+      <button id="refresh-btn" onclick="atualizarDados()">🔄 Atualizar dados</button>
+    </div>
+  </div>
+</div>
+
+<div class="wrap" id="content-area">
+
+<!-- ============================================================ COGS ============================================================ -->
+<div class="sec-head sec-cogs"><span class="sec-num">1</span><h2 class="sec-title">COGS (OPEX)</h2></div>
+<p class="sec-owner">Fonte: Google Sheets "Acompanhamento COGS 2026" — acompanha a planilha (atualização mensal, quando ela mudar)</p>
+
+<div class="hero-row" id="cogs-heroes">
+  <div class="hero-card c-cogs"><div class="hero-eye">Carregando…</div><div class="hero-num">—</div></div>
+</div>
+
+<div class="subhead">COGS OPS — visão total (9 linhas) x Meta da área <span class="sub-note">inclui as 2 linhas fora do meu escopo (Points of Location + Monitoring Services) · meta = Budget total</span></div>
+<div class="card"><div id="c-cogsStackTotal"></div><div class="legend-row" id="legend-cogs-total"></div><div class="legend-row"><span class="legend-item"><span class="legend-line"></span>Meta (Budget total — 9 linhas)</span></div></div>
+
+<div class="subhead">COGS por VHC — só as 7 linhas minhas (empilhado) x meta <span class="sub-note">meta = soma do budget das 7 linhas no mês</span></div>
+<div class="card"><div id="c-cogsStack"></div><div class="legend-row" id="legend-cogs"></div><div class="legend-row"><span class="legend-item"><span class="legend-line"></span>Meta (Budget total)</span></div></div>
+
+<div class="subhead">COGS por linha, individual <span class="sub-note">barra = Real · linha tracejada = Budget (meta) · inclui as 2 linhas fora do escopo (cinza/azul)</span></div>
+<div class="grid-lines" id="cogs-line-charts"></div>
+
+<div class="subhead">Previsto x Real, por linha <span class="sub-note">número maior = Real (verde = dentro do budget, vermelho = acima) · menor/cinza = Budget · YTD = coluna "2026" da planilha (taxa média, não soma)</span></div>
+<div class="tbl-wrap card"><table class="dtbl cogswide"><thead id="tbl-cogs-head"></thead><tbody id="tbl-cogs"></tbody></table></div>
+<div class="legend-row"><span class="legend-item"><span class="cc-real cc-good">■</span> Real dentro do budget</span><span class="legend-item"><span class="cc-real cc-bad">■</span> Real acima do budget</span></div>
+
+<div class="subhead">Linhas fora do escopo Ops <span class="sub-note">Points of Location + Monitoring Services — não são responsabilidade desta área, mostradas aqui só como referência (gráficos já incluídos na grade acima)</span></div>
+<div class="tbl-wrap card"><table class="dtbl cogswide"><thead id="tbl-cogs-fora-head"></thead><tbody id="tbl-cogs-fora"></tbody></table></div>
+
+<!-- ============================================================ INDISPONIBILIDADE ============================================================ -->
+<div class="sec-head sec-indisp"><span class="sec-num">2</span><h2 class="sec-title">Indisponibilidade OPS</h2></div>
+<p class="sec-owner">Fonte: BigQuery <code>turbi-dc-ops.ops_geral.vw_frota_historico_contabil</code> — via Google Apps Script (Web App) · meta: Google Sheets (planilha de metas 2026)</p>
+
+<div class="hero-row" id="indisp-heroes">
+  <div class="hero-card"><div class="hero-eye">Carregando…</div><div class="hero-num">—</div></div>
+</div>
+
+<div class="subhead">Indisponibilidade — real (Cálculo BQ direto) x meta <span class="sub-note">barra verde = dentro da meta · vermelha = acima</span></div>
+<div class="card"><div id="c-indispReal"></div><div class="legend-row"><span class="legend-item"><span class="legend-sw" style="background:var(--good)"></span>Dentro da meta</span><span class="legend-item"><span class="legend-sw" style="background:var(--critical)"></span>Acima da meta</span><span class="legend-item"><span class="legend-line"></span>Meta</span></div></div>
+
+<div class="subhead">Indisponibilidade por categoria <span class="sub-note">soma das categorias = Cálculo BQ direto</span></div>
+<div class="card"><div id="c-indispCat"></div><div class="legend-row" id="legend-indisp"></div></div>
+
+<div class="subhead">Mapa de calor por categoria <span class="sub-note">escala única pra tabela toda: 0% = branco, maior valor do período = vermelho — compara o peso real entre categorias, não só a variação de cada uma</span></div>
+<div class="tbl-wrap card" style="margin-top:14px">
+  <table class="dtbl"><thead id="tbl-indisp-head"></thead><tbody id="tbl-indisp"></tbody></table>
+</div>
+
+<div class="campinas-block">
+  <div class="subhead">Indisponibilidade — Campinas <span class="campinas-tag">recorte geográfico</span> <span class="sub-note">mesma fórmula, filtrada por podCity = Campinas</span></div>
+  <div class="hero-row" id="indisp-heroes-cp">
+    <div class="hero-card"><div class="hero-eye">Carregando…</div><div class="hero-num">—</div></div>
+  </div>
+  <div class="card"><div id="c-indispReal-cp"></div><div class="legend-row"><span class="legend-item"><span class="legend-sw" style="background:var(--good)"></span>Dentro da meta</span><span class="legend-item"><span class="legend-sw" style="background:var(--critical)"></span>Acima da meta</span><span class="legend-item"><span class="legend-line"></span>Meta</span></div></div>
+  <div class="card" style="margin-top:14px"><div id="c-indispCat-cp"></div><div class="legend-row" id="legend-indisp-cp"></div></div>
+  <div class="tbl-wrap card" style="margin-top:14px">
+    <table class="dtbl"><thead id="tbl-indisp-head-cp"></thead><tbody id="tbl-indisp-cp"></tbody></table>
+  </div>
+</div>
+
+<!-- ============================================================ CLAIM / APV ============================================================ -->
+<div class="sec-head sec-claim"><span class="sec-num">3</span><h2 class="sec-title">Claim — APV (reclamação pós-viagem)</h2></div>
+<p class="sec-owner">Fonte: BigQuery <code>turbi-dc-ops.atendimento.vw_post_trip_review_por_item</code> — via Google Apps Script (Web App) · meta: Google Sheets (Wash + Damage + POD)</p>
+
+<div class="hero-row" id="claim-heroes">
+  <div class="hero-card c-claim"><div class="hero-eye">Carregando…</div><div class="hero-num">—</div></div>
+</div>
+
+<div class="subhead">APV Wash + Damage + POD <span class="sub-note">Meta APV Ops = Wash + Damage + POD (metas da planilha, somadas)</span></div>
+<div class="card"><div id="c-apvStack"></div><div class="legend-row" id="legend-apv"></div><div class="legend-row"><span class="legend-item"><span class="legend-line"></span>Meta APV Ops (ref.)</span></div></div>
+
+<div class="tbl-wrap card" style="margin-top:14px">
+  <table class="dtbl cogswide"><thead id="tbl-apv-head"></thead><tbody id="tbl-apv"></tbody></table>
+</div>
+<div class="legend-row"><span class="legend-item"><span class="cc-real cc-good">■</span> Dentro da meta</span><span class="legend-item"><span class="cc-real cc-bad">■</span> Acima da meta</span></div>
+
+<div class="campinas-block">
+  <div class="subhead">Claim — Campinas <span class="campinas-tag">recorte geográfico</span> <span class="sub-note">mesma fórmula, filtrada por podCity = Campinas (join por podid)</span></div>
+  <div class="hero-row" id="claim-heroes-cp">
+    <div class="hero-card c-claim"><div class="hero-eye">Carregando…</div><div class="hero-num">—</div></div>
+  </div>
+  <div class="card"><div id="c-apvStack-cp"></div><div class="legend-row" id="legend-apv-cp"></div><div class="legend-row"><span class="legend-item"><span class="legend-line"></span>Meta APV Ops (ref.)</span></div></div>
+  <div class="tbl-wrap card" style="margin-top:14px">
+    <table class="dtbl cogswide"><thead id="tbl-apv-head-cp"></thead><tbody id="tbl-apv-cp"></tbody></table>
+  </div>
+</div>
+
+</div>
+
+<script>
+// ── Configuração — únicas 2 linhas que mudam se o Web App do Apps Script for reimplantado
+// (URL nova) ou se a planilha de origem mudar de ID. Ver README.md / Runbook no Obsidian. ──
+const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbzS-a8q7WFtFB3KKithEPafj_pYKO8Oa4sjm41zneTLyfrHfKRwukBcsqWDGlJe7GdYHw/exec';
+const SHARED_SHEET_ID = '103v2gA7a24QAT73yXbyTnSdWxZjAsh4bZOMzkdHEghg';
+
+// ── Tooltip customizado (delegação de evento) ──
+const tt = document.getElementById('tt-tooltip');
+document.addEventListener('mouseover', e=>{ const t=e.target.closest('[data-tip]'); if(t){ tt.textContent=t.getAttribute('data-tip'); tt.style.opacity=1; } });
+document.addEventListener('mousemove', e=>{ if(tt.style.opacity=='1'){ tt.style.left=(e.clientX+14)+'px'; tt.style.top=(e.clientY+14)+'px'; } });
+document.addEventListener('mouseout', e=>{ const t=e.target.closest('[data-tip]'); if(t){ tt.style.opacity=0; } });
+
+function mesLabel(ym){ const [y,m]=ym.split('-'); const M=['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez']; return M[parseInt(m,10)-1]; }
+
+// Escala usando o vermelho de marca (mesmo --critical/--critical-soft usados no resto do
+// painel) — claro (valor baixo) a esse vermelho (valor alto), por linha/categoria.
+const HEAT_LIGHT = [253,233,233]; // --critical-soft #FBE9E9
+const HEAT_DARK  = [185,29,28];   // --critical     #B91C1C
+function heatColor(v, min, max){
+  if(max===min) return `rgb(${HEAT_LIGHT.join(',')})`;
+  const t = Math.max(0, Math.min(1, (v-min)/(max-min)));
+  const mix = (i) => Math.round(HEAT_LIGHT[i] + (HEAT_DARK[i]-HEAT_LIGHT[i])*t);
+  return `rgb(${mix(0)},${mix(1)},${mix(2)})`;
+}
+function heatTextColor(v, min, max){
+  if(max===min) return 'var(--ink)';
+  const t = (v-min)/(max-min);
+  return t > 0.6 ? '#fff' : 'var(--ink)';
+}
+function slug(s){ return s.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'').replace(/[^a-z0-9]+/g,'-'); }
+
+/* ============================================================================ */
+/* Camada de dados — antes vinha do FastAPI local (/api/*), agora:               */
+/*   - Indisponibilidade/Claim-APV: Google Apps Script (Web App, BigQuery)       */
+/*   - COGS/Metas: Google Sheets (CSV público), parseado aqui no navegador       */
+/* Réplica exata de automacao/backend/queries/*.py — mesmas fórmulas, mesmo      */
+/* formato de saída, só mudou de onde o dado é buscado.                          */
+/* ============================================================================ */
+
+function round2(n){ return Math.round(n * 100) / 100; }
+
+async function fetchWebApp(endpoint, city){
+  if (!APPS_SCRIPT_URL || APPS_SCRIPT_URL.indexOf('REPLACE_WITH') === 0) {
+    throw new Error('APPS_SCRIPT_URL não configurada — cole a URL do Web App do Apps Script no topo do script.');
+  }
+  const params = new URLSearchParams({ endpoint });
+  if (city) params.set('city', city);
+  const res = await fetch(`${APPS_SCRIPT_URL}?${params.toString()}`);
+  if (!res.ok) throw new Error(`${endpoint}${city ? ' ('+city+')' : ''}: HTTP ${res.status}`);
+  const data = await res.json();
+  // O Web App do Apps Script sempre responde HTTP 200, mesmo em erro — o erro vem
+  // como {detail: "..."} no corpo, não como status HTTP (diferente do FastAPI antigo).
+  if (data && data.detail) throw new Error(`${endpoint}${city ? ' ('+city+')' : ''}: ${data.detail}`);
+  return data;
+}
+
+// ── CSV do Google Sheets (parser simples RFC4180 — aspas, campos com vírgula/quebra de linha) ──
+function parseCsv(text){
+  const rows = []; let row = []; let field = ''; let quoted = false;
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+    if (quoted) {
+      if (ch === '"') { if (text[i+1] === '"') { field += '"'; i++; } else { quoted = false; } }
+      else field += ch;
+      continue;
+    }
+    if (ch === '"') quoted = true;
+    else if (ch === ',') { row.push(field); field = ''; }
+    else if (ch === '\n') { row.push(field); rows.push(row); row = []; field = ''; }
+    else if (ch !== '\r') field += ch;
+  }
+  row.push(field); rows.push(row);
+  return rows;
+}
+
+async function fetchSheetRows(sheetName, spreadsheetId){
+  const id = spreadsheetId || SHARED_SHEET_ID;
+  const url = `https://docs.google.com/spreadsheets/d/${id}/gviz/tq?tqx=out:csv&sheet=${encodeURIComponent(sheetName)}`;
+  const res = await fetch(url);
+  if (!res.ok) throw new Error(`Sheets CSV "${sheetName}": HTTP ${res.status}`);
+  return parseCsv(await res.text());
+}
+
+// Réplica de sheets_fetch.to_number: formato BR ("1.234,56%", "(123)", "-").
+function toNumber(cell){
+  if (cell == null) return 0.0;
+  let s = String(cell).trim().replace(/%/g, '').replace(/\./g, '').replace(/,/g, '.');
+  if (!s) return 0.0;
+  const neg = s.startsWith('(') && s.endsWith(')');
+  if (neg) s = s.slice(1, -1);
+  const v = Number(s);
+  if (Number.isNaN(v)) return 0.0;
+  return neg ? -v : v;
+}
+
+// Réplica de sheets_fetch.find_row: 1ª linha cuja célula `col` bate exatamente com `label`.
+function findRow(rows, label, col, start, mustContain){
+  col = col == null ? 1 : col;
+  start = start || 0;
+  for (let i = start; i < rows.length; i++) {
+    const row = rows[i];
+    if (row.length > col && row[col].trim() === label) {
+      if (mustContain == null || row.some(c => c.includes(mustContain))) return row;
+    }
+  }
+  return null;
+}
+
+// ── COGS — réplica de queries/cogs.py ──
+const COGS_SHEET_NAME = 'Acompanhamento COGS 2026';
+const COGS_VHC_MARKER = 'COGS./VHC';
+const COGS_MONTH_STARTS = [1, 5, 9, 17, 21, 25, 33]; // jan..jul
+const COGS_MESES = ['2026-01','2026-02','2026-03','2026-04','2026-05','2026-06','2026-07'];
+const COGS_ANNUAL_START = 65;
+const COGS_LINHAS_LUI = ['Cleaning','Damage','Vehicle Maintenance','Vehicle Supplies','Desmobilization','Logistical','Other COGS'];
+const COGS_LINHAS_FORA_ESCOPO = ['Points of Location','Monitoring Services'];
+
+function cogsLinha(rows, vhcStart, nome){
+  const row = findRow(rows, nome, 0, vhcStart);
+  if (!row) throw new Error(`Linha "${nome}" não encontrada na seção COGS./VHC`);
+  const budget = COGS_MONTH_STARTS.map(s => row.length > s ? toNumber(row[s]) : 0.0);
+  const real = COGS_MONTH_STARTS.map(s => row.length > s + 1 ? toNumber(row[s + 1]) : 0.0);
+  const annualB = row.length > COGS_ANNUAL_START ? toNumber(row[COGS_ANNUAL_START]) : 0.0;
+  const annualR = row.length > COGS_ANNUAL_START + 1 ? toNumber(row[COGS_ANNUAL_START + 1]) : 0.0;
+  return { name: nome, budget, real, annualB, annualR };
+}
+
+async function getCogsData(){
+  const rows = await fetchSheetRows(COGS_SHEET_NAME);
+  const vhcStart = rows.findIndex(r => r.length > 0 && r[0].trim() === COGS_VHC_MARKER);
+  if (vhcStart === -1) throw new Error('Marcador "COGS./VHC" não encontrado na planilha de COGS');
+
+  const linhas = COGS_LINHAS_LUI.map(nome => cogsLinha(rows, vhcStart, nome));
+  const foraEscopo = COGS_LINHAS_FORA_ESCOPO.map(nome => cogsLinha(rows, vhcStart, nome));
+  const total9Linhas = cogsLinha(rows, vhcStart, 'COGS OPS');
+
+  const totBudget = COGS_MESES.map((_, i) => linhas.reduce((s, l) => s + l.budget[i], 0));
+  const totReal = COGS_MESES.map((_, i) => linhas.reduce((s, l) => s + l.real[i], 0));
+
+  return {
+    meses: COGS_MESES,
+    linhas,
+    total_7_linhas: {
+      budget: totBudget, real: totReal,
+      annualB: round2(linhas.reduce((s, l) => s + l.annualB, 0)),
+      annualR: round2(linhas.reduce((s, l) => s + l.annualR, 0)),
+    },
+    fora_escopo: foraEscopo,
+    total_9_linhas_vs_meta_area: {
+      annualB: total9Linhas.annualB, annualR: total9Linhas.annualR,
+      budget: total9Linhas.budget, real: total9Linhas.real,
+    },
+  };
+}
+
+// ── Metas — réplica de queries/metas.py ──
+const METAS_SHEET_OPS = 'Metas - Operações Execução';
+const METAS_SHEET_FLEET = 'Metas - Fleet Management';
+const METAS_F_COL = 5;
+const METAS_KV_START = 10;
+const METAS_KV_END = 22; // exclusivo -> 12 meses (K..V)
+const METAS_MESES = ['2026-01','2026-02','2026-03','2026-04','2026-05','2026-06','2026-07','2026-08','2026-09','2026-10','2026-11','2026-12'];
+
+function findPctRow(rows, label){
+  for (const row of rows) {
+    if (row.length > 1 && row[1].trim() === label && row.length > METAS_F_COL && row[METAS_F_COL].includes('%')) return row;
+  }
+  return null;
+}
+
+function extrairMeta(row){
+  const anual = toNumber(row[METAS_F_COL]);
+  const mensal = [];
+  for (let i = METAS_KV_START; i < METAS_KV_END; i++) mensal.push(row.length > i ? toNumber(row[i]) : 0.0);
+  return { anual, mensal };
+}
+
+async function getMetasData(){
+  const [opsRows, fleetRows] = await Promise.all([
+    fetchSheetRows(METAS_SHEET_OPS),
+    fetchSheetRows(METAS_SHEET_FLEET),
+  ]);
+
+  const indispRow = findPctRow(opsRows, 'Indisponibilidade Operacional %');
+  const washRow = findPctRow(opsRows, 'APV - Reclamaçoes Wash');
+  const damageRow = findPctRow(fleetRows, 'APV - Reclamaçoes Damage');
+  const podRow = findPctRow(fleetRows, "APV - Reclamaçoes Ops POD's");
+
+  const faltando = [];
+  if (!indispRow) faltando.push('Indisponibilidade');
+  if (!washRow) faltando.push('Wash');
+  if (!damageRow) faltando.push('Damage');
+  if (!podRow) faltando.push('POD');
+  if (faltando.length) throw new Error(`Meta(s) não encontrada(s) na planilha: ${faltando.join(', ')}`);
+
+  const indisp = extrairMeta(indispRow);
+  const wash = extrairMeta(washRow);
+  const damage = extrairMeta(damageRow);
+  const pod = extrairMeta(podRow);
+
+  const apvTotal = {
+    anual: round2(wash.anual + damage.anual + pod.anual),
+    mensal: wash.mensal.map((_, i) => round2(wash.mensal[i] + damage.mensal[i] + pod.mensal[i])),
+  };
+
+  return { meses: METAS_MESES, indisponibilidade: indisp, apv_wash: wash, apv_damage: damage, apv_pod: pod, apv_total: apvTotal };
+}
+
+// ── Metas (vindas de getMetasData() — planilha "Metas 2026") ──
+function buildMetaMaps(metas){
+  const map = (mensal) => Object.fromEntries(metas.meses.map((m,i)=>[m, mensal[i]]));
+  return {
+    indisp: map(metas.indisponibilidade.mensal),
+    indispAnual: metas.indisponibilidade.anual,
+    apvTotal: map(metas.apv_total.mensal),
+    apvTotalAnual: metas.apv_total.anual,
+    apvWash: map(metas.apv_wash.mensal),
+    apvWashAnual: metas.apv_wash.anual,
+    apvDamage: map(metas.apv_damage.mensal),
+    apvDamageAnual: metas.apv_damage.anual,
+    apvPod: map(metas.apv_pod.mensal),
+    apvPodAnual: metas.apv_pod.anual,
+  };
+}
+
+function lineBarChart(elId, cfg){
+  const W=640, H=cfg.height||150, padL=30, padR=8, padT=20, padB=20;
+  const innerW=W-padL-padR, innerH=H-padT-padB;
+  const dec = cfg.decimals!=null?cfg.decimals:1;
+  const unit = cfg.unit!=null?cfg.unit:'%';
+  const s1name = cfg.name1 || 'Real';
+  let allVals=cfg.values.slice();
+  if(cfg.meta) allVals=allVals.concat(cfg.meta.filter(v=>v!=null));
+  let max=Math.max(...allVals), min=Math.min(0,...allVals);
+  if(max===min) max=min+1;
+  const range=max-min, n=cfg.values.length, gap=innerW/n;
+  const y=v=>padT+innerH-((v-min)/range)*innerH;
+  const bw=gap*0.56;
+  const x=i=>padL+gap*i+(gap-bw)/2;
+  let svg=`<svg viewBox="0 0 ${W} ${H}" class="chart-svg">`;
+  svg+=`<line x1="${padL}" y1="${y(0)}" x2="${W-padR}" y2="${y(0)}" class="chart-axis"/>`;
+  cfg.values.forEach((v,i)=>{
+    const bx=x(i), bh=Math.abs(y(v)-y(0)), by=Math.min(y(v),y(0));
+    const fill = cfg.colors ? cfg.colors[i] : cfg.color;
+    svg+=`<rect x="${bx}" y="${by}" width="${bw}" height="${Math.max(bh,1)}" rx="2" fill="${fill}" data-tip="${cfg.labels[i]} — ${s1name}: ${v.toFixed(dec)}${unit}"/>`;
+    svg+=`<text x="${bx+bw/2}" y="${y(v)-5}" class="chart-val" text-anchor="middle">${v.toFixed(dec)}</text>`;
+    svg+=`<text x="${bx+bw/2}" y="${H-6}" class="chart-lbl" text-anchor="middle">${cfg.labels[i]}</text>`;
+  });
+  if(cfg.meta){
+    const cx=i=>x(i)+bw/2;
+    const pts=[]; cfg.meta.forEach((m,i)=>{ if(m!=null) pts.push(cx(i)+','+y(m)); });
+    svg+=`<polyline points="${pts.join(' ')}" class="chart-meta" fill="none"/>`;
+    cfg.meta.forEach((m,i)=>{ if(m!=null) svg+=`<circle cx="${cx(i)}" cy="${y(m)}" r="2.4" class="chart-meta-dot" data-tip="${cfg.labels[i]} — Meta: ${m.toFixed(dec)}${unit}"/>`; });
+  }
+  svg+='</svg>';
+  document.getElementById(elId).innerHTML=svg;
+}
+
+function stackedChart(elId, cfg){
+  const W=640, H=cfg.height||160, padL=32, padR=8, padT=20, padB=22;
+  const innerW=W-padL-padR, innerH=H-padT-padB;
+  const n=cfg.labels.length, gap=innerW/n, bw=gap*0.5;
+  const dec = cfg.decimals!=null?cfg.decimals:2;
+  const unit = cfg.unit!=null?cfg.unit:'%';
+  const totals=cfg.labels.map((_,i)=>cfg.series.reduce((s,ser)=>s+ser.values[i],0));
+  const metaArr = cfg.metaTotal || null;
+  const max=Math.max(...totals, ...(metaArr||[0]).filter(v=>v!=null));
+  const y=v=>padT+innerH-(v/max)*innerH;
+  const x=i=>padL+gap*i+(gap-bw)/2;
+  let svg=`<svg viewBox="0 0 ${W} ${H}" class="chart-svg">`;
+  svg+=`<line x1="${padL}" y1="${y(0)}" x2="${W-padR}" y2="${y(0)}" class="chart-axis"/>`;
+  for(let i=0;i<n;i++){
+    let acc=0;
+    cfg.series.forEach(s=>{
+      const v=s.values[i], top=y(acc+v), bottom=y(acc);
+      svg+=`<rect x="${x(i)}" y="${top}" width="${bw}" height="${Math.max(bottom-top,0.5)}" fill="${s.color}" data-tip="${cfg.labels[i]} — ${s.name}: ${v.toFixed(dec)}${unit}"/>`;
+      acc+=v;
+    });
+    svg+=`<text x="${x(i)+bw/2}" y="${y(acc)-4}" class="chart-val" text-anchor="middle">${acc.toFixed(dec)}</text>`;
+    svg+=`<text x="${x(i)+bw/2}" y="${H-6}" class="chart-lbl" text-anchor="middle">${cfg.labels[i]}</text>`;
+  }
+  if(metaArr){
+    const pts=[]; metaArr.forEach((m,i)=>{ if(m!=null) pts.push((x(i)+bw/2)+','+y(m)); });
+    svg+=`<polyline points="${pts.join(' ')}" class="chart-meta" fill="none"/>`;
+    metaArr.forEach((m,i)=>{ if(m!=null) svg+=`<circle cx="${x(i)+bw/2}" cy="${y(m)}" r="2.4" class="chart-meta-dot" data-tip="${cfg.labels[i]} — Meta: ${m.toFixed(dec)}${unit}"/>`; });
+  }
+  svg+='</svg>';
+  document.getElementById(elId).innerHTML=svg;
+}
+
+function buildLegend(elId, items){
+  document.getElementById(elId).innerHTML = items.map(it=>`<span class="legend-item"><span class="legend-sw" style="background:${it.color}"></span>${it.name}</span>`).join('');
+}
+
+// ── COGS ──
+// Rampa única cinza-azulada dessaturada (mesma família de cor das categorias de
+// Indisponibilidade) — as 2 linhas fora de escopo usam a mesma rampa, só mais claras,
+// em vez de um cinza separado que não combinava com o azul.
+const COGS_COLORS = {
+  'Cleaning': '#232733', 'Damage': '#3A4050', 'Vehicle Maintenance': '#474E60',
+  'Vehicle Supplies': '#555D70', 'Desmobilization': '#646C80', 'Logistical': '#747C90',
+  'Other COGS': '#8790A0',
+  'Points of Location': '#AEB4C0', 'Monitoring Services': '#D8DBE0',
+};
+
+function cogsCell(b, r){
+  const cls = r<=b ? 'cc-good' : 'cc-bad';
+  return `<td class="num"><div class="cc-real ${cls}">${r.toFixed(1)}</div><div class="cc-budget">${b.toFixed(1)}</div></td>`;
+}
+
+function cogsRowHtml(l){
+  let row = `<tr><td>${l.name}</td>`;
+  l.budget.forEach((b,i)=>{ row += cogsCell(b, l.real[i]); });
+  row += cogsCell(l.annualB, l.annualR);
+  row += '</tr>';
+  return row;
+}
+
+function renderCogs(data){
+  const labels = data.meses.map(mesLabel);
+  const t = data.total_7_linhas;
+  const t9 = data.total_9_linhas_vs_meta_area;
+
+  document.getElementById('cogs-heroes').innerHTML = `
+    <div class="hero-card c-cogs"><div class="hero-eye">Total 7 linhas — 2026 (taxa média)</div><div class="hero-num">R$ ${t.annualR.toFixed(2)}</div><div class="hero-sub">Budget R$ ${t.annualB.toFixed(2)} · ${t.annualR<=t.annualB?'dentro do':'acima do'} budget</div></div>
+    <div class="hero-card c-cogs"><div class="hero-eye">Total COGS (9 linhas) x Meta Total da área</div><div class="hero-num">R$ ${t9.annualR.toFixed(2)}</div><div class="hero-sub">Meta (Budget) R$ ${t9.annualB.toFixed(2)} · ${t9.annualR<=t9.annualB?'dentro da':'acima da'} meta</div></div>
+  `;
+
+  const labelsYtd = labels.concat(['YTD']);
+  const todasLinhas = data.linhas.concat(data.fora_escopo);
+
+  stackedChart('c-cogsStackTotal', {
+    labels: labelsYtd,
+    series: todasLinhas.map(l => ({ name: l.name, color: COGS_COLORS[l.name] || '#888', values: l.real.concat([l.annualR]) })),
+    metaTotal: t9.budget.concat([t9.annualB]),
+    unit: '', decimals: 1, height: 220
+  });
+  buildLegend('legend-cogs-total', todasLinhas.map(l => ({ name: l.name, color: COGS_COLORS[l.name] || '#888' })));
+
+  stackedChart('c-cogsStack', {
+    labels: labelsYtd,
+    series: data.linhas.map(l => ({ name: l.name, color: COGS_COLORS[l.name] || '#888', values: l.real.concat([l.annualR]) })),
+    metaTotal: t.budget.concat([t.annualB]),
+    unit: '', decimals: 1, height: 220
+  });
+  buildLegend('legend-cogs', data.linhas.map(l => ({ name: l.name, color: COGS_COLORS[l.name] || '#888' })));
+
+  const lineChartHtml = l => `<div class="card"><div class="card-title">${l.name}</div><div id="cogs-line-${slug(l.name)}"></div></div>`;
+  const renderLineChart = l => {
+    const colors = l.real.map((r,i)=> r<=l.budget[i] ? 'var(--good)' : 'var(--critical)');
+    lineBarChart('cogs-line-'+slug(l.name), {
+      labels, values: l.real, meta: l.budget, colors, color: COGS_COLORS[l.name] || 'var(--blue)',
+      name1: 'Real', unit: '', decimals: 1, height: 150
+    });
+  };
+
+  document.getElementById('cogs-line-charts').innerHTML = todasLinhas.map(lineChartHtml).join('');
+  todasLinhas.forEach(renderLineChart);
+
+  const head = `<tr><th>Linha</th>${labels.map(l=>`<th class="num">${l}</th>`).join('')}<th class="num">YTD ("2026")</th></tr>`;
+  document.getElementById('tbl-cogs-head').innerHTML = head;
+  const body = data.linhas.map(cogsRowHtml).join('') +
+    `<tr class="tot"><td>Total (7 linhas)</td>${t.budget.map((b,i)=>cogsCell(b, t.real[i])).join('')}${cogsCell(t.annualB, t.annualR)}</tr>`;
+  document.getElementById('tbl-cogs').innerHTML = body;
+
+  document.getElementById('tbl-cogs-fora-head').innerHTML = head;
+  document.getElementById('tbl-cogs-fora').innerHTML = data.fora_escopo.map(cogsRowHtml).join('') +
+    `<tr class="tot"><td>Total (9 linhas — COGS OPS)</td>${t9.real.map((r,i)=>cogsCell(t9.budget[i], r)).join('')}${cogsCell(t9.annualB, t9.annualR)}</tr>`;
+}
+
+// ── Indisponibilidade (compartilhado entre Total e Campinas via sufixo de id) ──
+function renderIndispTable(elIdHead, elIdBody, data, metaMap){
+  const labels = data.meses.map(mesLabel);
+  const head = `<tr><th>Categoria</th>${labels.map(l=>`<th class="num">${l}</th>`).join('')}<th class="num">YTD</th></tr>`;
+  document.getElementById(elIdHead).innerHTML = head;
+  // Escala ÚNICA pra tabela toda: 0% = branco, maior valor de qualquer categoria/mês = vermelho.
+  // (Antes era por linha — isso fazia categoria pequena tipo "Falha de Instalação" parecer tão
+  // "grave" quanto Sinistro, só por variar dentro do próprio intervalo minúsculo dela.)
+  const heatMin = 0;
+  const heatMax = Math.max(...data.categorias.flatMap(c => c.values.concat([c.ytd])));
+  let body = data.categorias.map(c=>{
+    const heatTd = (v, extra) => `<td class="num" style="background:${heatColor(v,heatMin,heatMax)};color:${heatTextColor(v,heatMin,heatMax)}${extra||''}" data-tip="${c.name}: ${v.toFixed(2)}%">${v.toFixed(2)}%</td>`;
+    const cells = c.values.map(v=>heatTd(v)).join('');
+    const ytdCell = heatTd(c.ytd, ';font-weight:700');
+    return `<tr><td><span class="legend-sw" style="background:${c.color};display:inline-block;margin-right:6px"></span>${c.name}</td>${cells}${ytdCell}</tr>`;
+  }).join('');
+  const bqCells = data.bq_direto.map((v,i)=>{
+    const m = metaMap[data.meses[i]];
+    const cls = (m==null || v<=m) ? 'cc-good' : 'cc-bad';
+    return `<td class="num cc-real ${cls}">${v.toFixed(2)}%</td>`;
+  }).join('');
+  body += `<tr class="tot"><td>Cálculo BQ direto</td>${bqCells}<td class="num">${data.ytd_bq_direto.toFixed(2)}%</td></tr>`;
+  document.getElementById(elIdBody).innerHTML = body;
+}
+
+function renderIndisponibilidade(data, metaMaps, opts){
+  opts = opts || {};
+  const suf = opts.suffix || '';
+  const titlePrefix = opts.titlePrefix || '';
+  const labels = data.meses.map(mesLabel);
+  const meta = data.meses.map(ym => metaMaps.indisp[ym] ?? null);
+  const metaAnual = metaMaps.indispAnual ?? null;
+
+  const ultimo = data.bq_direto[data.bq_direto.length-1];
+  const ultimoMeta = meta[meta.length-1];
+  const piorIdx = data.bq_direto.reduce((best,v,i)=> v>data.bq_direto[best]?i:best, 0);
+
+  document.getElementById('indisp-heroes'+suf).innerHTML = `
+    <div class="hero-card"><div class="hero-eye">${titlePrefix}${labels[labels.length-1]}/${data.meses[data.meses.length-1].slice(0,4)} (BQ direto)</div><div class="hero-num">${ultimo.toFixed(2)}%</div><div class="hero-sub">${ultimoMeta!=null?`Meta ${ultimoMeta.toFixed(2)}% · ${ultimo<=ultimoMeta?'dentro da meta':'acima da meta'}`:'Meta não disponível'}</div></div>
+    <div class="hero-card"><div class="hero-eye">${titlePrefix}YTD (${labels[0]}–${labels[labels.length-1]})</div><div class="hero-num">${data.ytd_bq_direto.toFixed(2)}%</div><div class="hero-sub">${metaAnual!=null?`Meta 2026 (anual): ${metaAnual.toFixed(2)}%`:'Meta anual não disponível'}</div></div>
+    <div class="hero-card"><div class="hero-eye">${titlePrefix}Pior mês do período</div><div class="hero-num">${data.bq_direto[piorIdx].toFixed(2)}%</div><div class="hero-sub">${labels[piorIdx]}/${data.meses[piorIdx].slice(0,4)}</div></div>
+  `;
+
+  const labelsYtd = labels.concat(['YTD']);
+  const valuesYtd = data.bq_direto.concat([data.ytd_bq_direto]);
+  const metaYtd = meta.concat([metaAnual]);
+  const colors = valuesYtd.map((v,i)=> (metaYtd[i]==null || v<=metaYtd[i]) ? 'var(--good)' : 'var(--critical)');
+  lineBarChart('c-indispReal'+suf, { labels: labelsYtd, values: valuesYtd, meta: metaYtd, colors, name1:'Cálculo BQ direto', decimals:2, height:190 });
+
+  // Categorias ordenadas da maior pra menor (YTD) — mesma ordem/cor no gráfico, legenda e tabela.
+  const catsSorted = data.categorias.slice().sort((a,b)=> b.ytd - a.ytd);
+
+  stackedChart('c-indispCat'+suf, {
+    labels: labelsYtd,
+    series: catsSorted.map(c=>({ name:c.name, color:c.color, values:c.values.concat([c.ytd]) })),
+    metaTotal: metaYtd,
+    height:220
+  });
+  buildLegend('legend-indisp'+suf, catsSorted.map(c=>({name:c.name, color:c.color})));
+
+  renderIndispTable('tbl-indisp-head'+suf, 'tbl-indisp'+suf, {...data, categorias: catsSorted}, metaMaps.indisp);
+}
+
+function pctCell(real, meta){
+  if (meta == null) return `<td class="num">${real.toFixed(2)}%</td>`;
+  const cls = real <= meta ? 'cc-good' : 'cc-bad';
+  return `<td class="num"><div class="cc-real ${cls}">${real.toFixed(2)}%</div><div class="cc-budget">${meta.toFixed(2)}%</div></td>`;
+}
+
+function renderClaimApv(data, metaMaps, opts){
+  opts = opts || {};
+  const suf = opts.suffix || '';
+  const titlePrefix = opts.titlePrefix || '';
+  const labels = data.meses.map(mesLabel);
+  const metaOps = data.meses.map(ym => metaMaps.apvTotal[ym] ?? null);
+  const metaWashArr = data.meses.map(ym => metaMaps.apvWash[ym] ?? null);
+  const metaDamageArr = data.meses.map(ym => metaMaps.apvDamage[ym] ?? null);
+  const metaPodArr = data.meses.map(ym => metaMaps.apvPod[ym] ?? null);
+
+  const ultimoSoma = data.soma[data.soma.length-1];
+  const ultimoMeta = metaOps[metaOps.length-1];
+
+  document.getElementById('claim-heroes'+suf).innerHTML = `
+    <div class="hero-card c-claim"><div class="hero-eye">${titlePrefix}APV Soma — ${labels[labels.length-1]}/${data.meses[data.meses.length-1].slice(0,4)}</div><div class="hero-num">${ultimoSoma.toFixed(2)}%</div><div class="hero-sub">${ultimoMeta!=null?`Meta APV Ops (ref.) ${ultimoMeta.toFixed(2)}% · ${ultimoSoma<=ultimoMeta?'dentro da meta':'acima da meta'}`:'Meta não disponível'} · Wash ${data.wash[data.wash.length-1].toFixed(2)} + Damage ${data.damage[data.damage.length-1].toFixed(2)} + POD ${data.pod[data.pod.length-1].toFixed(2)}</div></div>
+    <div class="hero-card c-claim"><div class="hero-eye">${titlePrefix}APV Soma — YTD</div><div class="hero-num">${data.ytd.soma.toFixed(2)}%</div><div class="hero-sub">Wash ${data.ytd.wash.toFixed(2)} + Damage ${data.ytd.damage.toFixed(2)} + POD ${data.ytd.pod.toFixed(2)} · Meta 2026 (anual): ${metaMaps.apvTotalAnual.toFixed(2)}%</div></div>
+  `;
+
+  const labelsYtd = labels.concat(['YTD']);
+  stackedChart('c-apvStack'+suf, {
+    labels: labelsYtd,
+    series: [
+      { name:'Wash', color:'#2E3340', values: data.wash.concat([data.ytd.wash]) },
+      { name:'Damage', color:'#646C80', values: data.damage.concat([data.ytd.damage]) },
+      { name:'POD', color:'#AEB4C0', values: data.pod.concat([data.ytd.pod]) },
+    ],
+    metaTotal: metaOps.concat([metaMaps.apvTotalAnual]),
+    height:200
+  });
+  buildLegend('legend-apv'+suf, [{name:'Wash',color:'#2E3340'},{name:'Damage',color:'#646C80'},{name:'POD',color:'#AEB4C0'}]);
+
+  const head = `<tr><th>Mês</th>${labels.map(l=>`<th class="num">${l}</th>`).join('')}<th class="num">YTD</th></tr>`;
+  document.getElementById('tbl-apv-head'+suf).innerHTML = head;
+  const rowCells = (name, arr, metaArr, ytd, ytdMeta) =>
+    `<td>${name}</td>${arr.map((v,i)=>pctCell(v, metaArr[i])).join('')}${pctCell(ytd, ytdMeta)}`;
+  document.getElementById('tbl-apv'+suf).innerHTML =
+    `<tr>${rowCells('Wash', data.wash, metaWashArr, data.ytd.wash, metaMaps.apvWashAnual)}</tr>` +
+    `<tr>${rowCells('Damage', data.damage, metaDamageArr, data.ytd.damage, metaMaps.apvDamageAnual)}</tr>` +
+    `<tr>${rowCells('POD', data.pod, metaPodArr, data.ytd.pod, metaMaps.apvPodAnual)}</tr>` +
+    `<tr class="tot">${rowCells('Soma', data.soma, metaOps, data.ytd.soma, metaMaps.apvTotalAnual)}</tr>`;
+}
+
+async function atualizarDados(){
+  const btn = document.getElementById('refresh-btn');
+  const statusMsg = document.getElementById('status-msg');
+  const area = document.getElementById('content-area');
+  btn.disabled = true;
+  btn.textContent = '⏳ Consultando BigQuery + Sheets…';
+  statusMsg.textContent = '';
+  statusMsg.classList.remove('err');
+  area.classList.add('loading-veil');
+  try {
+    const [indispData, indispCpData, apvData, apvCpData, cogsData, metasData] = await Promise.all([
+      fetchWebApp('indisponibilidade'),
+      fetchWebApp('indisponibilidade', 'Campinas'),
+      fetchWebApp('claim-apv'),
+      fetchWebApp('claim-apv', 'Campinas'),
+      getCogsData(),
+      getMetasData(),
+    ]);
+    const metaMaps = buildMetaMaps(metasData);
+    renderCogs(cogsData);
+    renderIndisponibilidade(indispData, metaMaps, {});
+    renderIndisponibilidade(indispCpData, metaMaps, {suffix:'-cp', titlePrefix:'Campinas — '});
+    renderClaimApv(apvData, metaMaps, {});
+    renderClaimApv(apvCpData, metaMaps, {suffix:'-cp', titlePrefix:'Campinas — '});
+    document.getElementById('last-update').textContent = 'última atualização: ' + new Date().toLocaleTimeString('pt-BR');
+  } catch (e) {
+    statusMsg.textContent = 'Falha ao atualizar: ' + e.message;
+    statusMsg.classList.add('err');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '🔄 Atualizar dados';
+    area.classList.remove('loading-veil');
+  }
+}
+
+atualizarDados();
+</script>
+</body>
+</html>
