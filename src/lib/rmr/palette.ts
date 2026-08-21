@@ -36,8 +36,8 @@ export const CATEGORICAL_RAMP = [
   "#D8DBE0",
 ] as const;
 
-export function rampColor(index: number) {
-  return CATEGORICAL_RAMP[index % CATEGORICAL_RAMP.length];
+export function rampColor(index: number): string {
+  return CATEGORICAL_RAMP[index % CATEGORICAL_RAMP.length] ?? CATEGORICAL_RAMP[0];
 }
 
 /** Interpola entre o vermelho suave e o vermelho de marca (0..1). */
