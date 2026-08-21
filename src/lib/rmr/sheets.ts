@@ -263,7 +263,10 @@ function readMetaRow(row: string[]): Meta {
 
 function findMeta(rows: string[][], indicator: string, requirePercent = false): Meta {
   const target = norm(indicator);
-  const matches = rows.filter((r) => norm(r[COL_B] ?? "") === target);
+  // Comparação por "contém", não igualdade exata: os rótulos reais na planilha são
+  // textos completos ("Indisponibilidade Operacional %", "APV - Reclamaçoes Wash"),
+  // não os nomes curtos usados como indicador aqui.
+  const matches = rows.filter((r) => norm(r[COL_B] ?? "").includes(target));
   if (matches.length === 0) return EMPTY_META;
   // Damage aparece 2x na aba Fleet: só vale a versão cuja meta anual tem "%".
   const chosen = requirePercent

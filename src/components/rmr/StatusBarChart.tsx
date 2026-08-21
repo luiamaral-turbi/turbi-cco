@@ -64,12 +64,7 @@ export function StatusBarChart({
             const t = row.Meta;
             const v = row.Real;
             const ok = v === null || t === null ? null : v <= t;
-            return (
-              <Cell
-                key={i}
-                fill={ok === null ? BRAND.gray : ok ? BRAND.green : BRAND.red}
-              />
-            );
+            return <Cell key={i} fill={ok === null ? BRAND.gray : ok ? BRAND.green : BRAND.red} />;
           })}
         </Bar>
         <Line

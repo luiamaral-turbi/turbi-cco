@@ -81,6 +81,11 @@ export function worstMonthIndex(values: (number | null)[]) {
   return best;
 }
 
+/** Acesso seguro a um índice de array de valores (undefined -> null). */
+export function at(values: (number | null)[], index: number): number | null {
+  return index >= 0 ? (values[index] ?? null) : null;
+}
+
 /** Soma dos valores de todas as séries por coluna. */
 export function stackTotals(series: Series[]) {
   return Array.from({ length: 13 }, (_, i) => {

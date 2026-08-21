@@ -7,18 +7,18 @@
 
 const env = import.meta.env as Record<string, string | undefined>;
 
-export const COGS_SHEET_ID = env['VITE_COGS_SHEET_ID'] ?? "";
-export const COGS_SHEET_TAB = env['VITE_COGS_SHEET_TAB'] ?? "COGS";
-export const METAS_SHEET_ID = env['VITE_METAS_SHEET_ID'] ?? "";
-export const METAS_TAB_OPS = env['VITE_METAS_TAB_OPS'] ?? "Metas - Operações Execução";
-export const METAS_TAB_FLEET = env['VITE_METAS_TAB_FLEET'] ?? "Metas - Fleet Management";
+export const COGS_SHEET_ID = env["VITE_COGS_SHEET_ID"] ?? "";
+export const COGS_SHEET_TAB = env["VITE_COGS_SHEET_TAB"] ?? "Acompanhamento COGS 2026";
+export const METAS_SHEET_ID = env["VITE_METAS_SHEET_ID"] ?? "";
+export const METAS_TAB_OPS = env["VITE_METAS_TAB_OPS"] ?? "Metas - Operações Execução";
+export const METAS_TAB_FLEET = env["VITE_METAS_TAB_FLEET"] ?? "Metas - Fleet Management";
 
 /** Supabase próprio (NÃO Lovable Cloud) — apenas Edge Function + secrets. */
-export const SUPABASE_URL = env['VITE_SUPABASE_URL'] ?? "";
-export const SUPABASE_ANON_KEY = env['VITE_SUPABASE_ANON_KEY'] ?? "";
-export const BQ_FUNCTION_NAME = env['VITE_BQ_FUNCTION_NAME'] ?? "bigquery-rmr";
+export const SUPABASE_URL = env["VITE_SUPABASE_URL"] ?? "";
+export const SUPABASE_ANON_KEY = env["VITE_SUPABASE_ANON_KEY"] ?? "";
+export const BQ_FUNCTION_NAME = env["VITE_BQ_FUNCTION_NAME"] ?? "bigquery-rmr";
 
-export const YEAR = Number(env['VITE_RMR_YEAR'] ?? "2026");
+export const YEAR = Number(env["VITE_RMR_YEAR"] ?? "2026");
 
 export function csvUrl(sheetId: string, tab: string) {
   return `https://docs.google.com/spreadsheets/d/${sheetId}/gviz/tq?tqx=out:csv&sheet=${encodeURIComponent(tab)}`;
