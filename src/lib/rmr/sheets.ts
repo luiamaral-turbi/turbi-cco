@@ -292,10 +292,15 @@ export async function fetchMetas(): Promise<MetasData> {
     fetchCsv(METAS_SHEET_ID, METAS_TAB_FLEET),
   ]);
 
+  // Termos de busca mais específicos que só "Wash"/"Damage"/"POD": a aba Fleet
+  // Management tem outras linhas tipo "Custo Operacional Damage..." e "Custo
+  // Operacional POD e Damage/VHC" que também contêm essas palavras e por
+  // coincidência têm "%" numa célula — sem o prefixo "Reclamaçoes", o match
+  // errado vence. Confirmado batendo com a planilha real antes de finalizar.
   const indisponibilidade = findMeta(ops, "Indisponibilidade");
-  const wash = findMeta(ops, "Wash");
-  const damage = findMeta(fleet, "Damage", true);
-  const pod = findMeta(fleet, "POD");
+  const wash = findMeta(ops, "Reclamaçoes Wash");
+  const damage = findMeta(fleet, "Reclamaçoes Damage", true);
+  const pod = findMeta(fleet, "Reclamaçoes Ops POD");
 
   return {
     indisponibilidade,
