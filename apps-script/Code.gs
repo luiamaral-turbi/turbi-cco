@@ -19,20 +19,24 @@
 var PROJECT_ID = 'turbi-dc-ops';
 var TIMEZONE = 'America/Sao_Paulo';
 
-// Ordem e cores fixas — idêntico a CATEGORIAS em indisponibilidade.py.
+// Ordem fixa (não muda). Cores: rampa única em tom de azul da marca Turbi (#231DB0,
+// escuro→claro) — 3ª versão da paleta categórica. Trocou a rampa cinza-azulada
+// dessaturada anterior por pedido do Lui (2026-08-22): queria a identidade visual da
+// marca mais presente, não mais neutro/cinza. Mesma rampa usada em COGS_COLORS e nas
+// cores de Wash/Damage/POD do index.html — trocar aqui exige trocar lá também.
 var CATEGORIAS = [
-  { status: '09-Sinistro', name: 'Sinistro', color: '#232733' },
-  { status: '06-Lavagem', name: 'Lavagem/Preparação', color: '#2E3340' },
-  { status: '15-Preparando a Desmobilizacao', name: 'Prep. Desmobilização', color: '#3A4050' },
-  { status: '11-Outros', name: 'Outros', color: '#474E60' },
-  { status: '08-Mudanca de Pod', name: 'Mudança de Pod', color: '#555D70' },
-  { status: '07-Revisao', name: 'Revisão', color: '#646C80' },
-  { status: '13-Bateria baixa', name: 'Bateria baixa', color: '#747C90' },
-  { status: '10-Manutencao de Pneus', name: 'Manut. Pneus', color: '#8790A0' },
-  { status: '12-Sem Comunicacao', name: 'Sem Comunicação', color: '#9AA1B0' },
-  { status: '17-Manut. IOT', name: 'Manut. IOT', color: '#AEB4C0' },
-  { status: '19-Falha instalação', name: 'Falha de Instalação', color: '#C3C8D0' },
-  { status: 'OPERATIONAL', name: 'Operational', color: '#D8DBE0' },
+  { status: '09-Sinistro', name: 'Sinistro', color: '#120F4A' },
+  { status: '06-Lavagem', name: 'Lavagem/Preparação', color: '#171469' },
+  { status: '15-Preparando a Desmobilizacao', name: 'Prep. Desmobilização', color: '#1E1987' },
+  { status: '11-Outros', name: 'Outros', color: '#231DB0' },
+  { status: '08-Mudanca de Pod', name: 'Mudança de Pod', color: '#2B26C4' },
+  { status: '07-Revisao', name: 'Revisão', color: '#3B36D8' },
+  { status: '13-Bateria baixa', name: 'Bateria baixa', color: '#5854DD' },
+  { status: '10-Manutencao de Pneus', name: 'Manut. Pneus', color: '#7572E3' },
+  { status: '12-Sem Comunicacao', name: 'Sem Comunicação', color: '#938FE9' },
+  { status: '17-Manut. IOT', name: 'Manut. IOT', color: '#B0ADEE' },
+  { status: '19-Falha instalação', name: 'Falha de Instalação', color: '#C9C7F3' },
+  { status: 'OPERATIONAL', name: 'Operational', color: '#DDDCF8' },
 ];
 
 /* -------------------------------------------------------------------------- */

@@ -29,3 +29,26 @@ querer ler o diff inteiro.
   mudando o acesso da implantação para "Qualquer pessoa" (URL sem o prefixo de domínio).
 - **Hospedagem**: GitHub Pages servindo `index.html` direto da raiz da branch `main`, substituindo
   a necessidade de qualquer servidor (local, Cloudflare Tunnel ou Lovable) rodando continuamente.
+- **Repositório tornado público**: GitHub Pages em repositório privado exige plano pago (GitHub
+  Pro/Team). Optamos por tornar `luiamaral-turbi/turbi-cco` público em vez de pagar o upgrade —
+  expõe o SQL e nomes de tabelas do BigQuery, mas nenhuma credencial (a URL do Web App e o ID da
+  planilha já eram públicos por natureza).
+- **Confirmado em produção (2026-08-22)**: teste visual completo no link público — COGS,
+  Indisponibilidade e Claim/APV carregando dados reais (nacional e Campinas), botão "Atualizar
+  dados" funcionando.
+
+## 2026-08-22 — Paleta em tons de azul da marca + gráfico "COGS Geral"
+
+- **Paleta categórica trocada de cinza-azulado para azul da marca**: as 12 categorias de
+  Indisponibilidade (`apps-script/Code.gs`), as 9 linhas de COGS (`COGS_COLORS` em `index.html`) e
+  os 3 componentes de Claim/APV (Wash/Damage/POD) passaram a usar uma rampa única baseada no azul
+  da marca Turbi (`#231DB0`, escuro→claro) em vez da rampa cinza-azulada dessaturada anterior. 3ª
+  versão da paleta categórica deste painel — pedido explícito do Lui pra reforçar a identidade
+  visual da marca. **Importante**: como a cor de cada categoria de Indisponibilidade vem do
+  `Code.gs` (campo `color` no JSON), essa mudança só aparece no site depois de reimplantar o Apps
+  Script (ver `README.md`/Runbook) — a de COGS/Claim é só client-side, aparece assim que o
+  `index.html` for publicado.
+- **Novo gráfico "COGS Geral (9 linhas) — Real x Meta"**: barra por mês (+ YTD) comparando o total
+  das 9 linhas de COGS ("COGS OPS") contra a meta da área, com a mesma convenção de cor usada em
+  Indisponibilidade (verde = dentro da meta, vermelho = acima). Fica logo abaixo dos hero cards,
+  antes do gráfico empilhado de composição.

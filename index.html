@@ -132,6 +132,9 @@
   <div class="hero-card c-cogs"><div class="hero-eye">Carregando…</div><div class="hero-num">—</div></div>
 </div>
 
+<div class="subhead">COGS Geral (9 linhas) — Real x Meta <span class="sub-note">barra verde = dentro da meta · vermelha = acima · inclui YTD</span></div>
+<div class="card"><div id="c-cogsGeral"></div><div class="legend-row"><span class="legend-item"><span class="legend-sw" style="background:var(--good)"></span>Dentro da meta</span><span class="legend-item"><span class="legend-sw" style="background:var(--critical)"></span>Acima da meta</span><span class="legend-item"><span class="legend-line"></span>Meta</span></div></div>
+
 <div class="subhead">COGS OPS — visão total (9 linhas) x Meta da área <span class="sub-note">inclui as 2 linhas fora do meu escopo (Points of Location + Monitoring Services) · meta = Budget total</span></div>
 <div class="card"><div id="c-cogsStackTotal"></div><div class="legend-row" id="legend-cogs-total"></div><div class="legend-row"><span class="legend-item"><span class="legend-line"></span>Meta (Budget total — 9 linhas)</span></div></div>
 
@@ -503,14 +506,15 @@ function buildLegend(elId, items){
 }
 
 // ── COGS ──
-// Rampa única cinza-azulada dessaturada (mesma família de cor das categorias de
-// Indisponibilidade) — as 2 linhas fora de escopo usam a mesma rampa, só mais claras,
-// em vez de um cinza separado que não combinava com o azul.
+// Rampa única em tom de azul da marca Turbi (#231DB0, escuro→claro) — mesma família
+// de cor usada nas categorias de Indisponibilidade (ver apps-script/Code.gs) e nas
+// cores de Wash/Damage/POD do Claim/APV logo abaixo. 3ª versão da paleta categórica —
+// trocou a rampa cinza-azulada dessaturada anterior por pedido do Lui (2026-08-22).
 const COGS_COLORS = {
-  'Cleaning': '#232733', 'Damage': '#3A4050', 'Vehicle Maintenance': '#474E60',
-  'Vehicle Supplies': '#555D70', 'Desmobilization': '#646C80', 'Logistical': '#747C90',
-  'Other COGS': '#8790A0',
-  'Points of Location': '#AEB4C0', 'Monitoring Services': '#D8DBE0',
+  'Cleaning': '#120F4A', 'Damage': '#1E1987', 'Vehicle Maintenance': '#231DB0',
+  'Vehicle Supplies': '#2B26C4', 'Desmobilization': '#3B36D8', 'Logistical': '#5854DD',
+  'Other COGS': '#7572E3',
+  'Points of Location': '#B0ADEE', 'Monitoring Services': '#DDDCF8',
 };
 
 function cogsCell(b, r){
@@ -538,6 +542,11 @@ function renderCogs(data){
 
   const labelsYtd = labels.concat(['YTD']);
   const todasLinhas = data.linhas.concat(data.fora_escopo);
+
+  const geralValues = t9.real.concat([t9.annualR]);
+  const geralMeta = t9.budget.concat([t9.annualB]);
+  const geralColors = geralValues.map((v,i)=> v<=geralMeta[i] ? 'var(--good)' : 'var(--critical)');
+  lineBarChart('c-cogsGeral', { labels: labelsYtd, values: geralValues, meta: geralMeta, colors: geralColors, name1:'Real (9 linhas)', unit:'', decimals:1, height:190 });
 
   stackedChart('c-cogsStackTotal', {
     labels: labelsYtd,
@@ -669,14 +678,14 @@ function renderClaimApv(data, metaMaps, opts){
   stackedChart('c-apvStack'+suf, {
     labels: labelsYtd,
     series: [
-      { name:'Wash', color:'#2E3340', values: data.wash.concat([data.ytd.wash]) },
-      { name:'Damage', color:'#646C80', values: data.damage.concat([data.ytd.damage]) },
-      { name:'POD', color:'#AEB4C0', values: data.pod.concat([data.ytd.pod]) },
+      { name:'Wash', color:'#171469', values: data.wash.concat([data.ytd.wash]) },
+      { name:'Damage', color:'#3B36D8', values: data.damage.concat([data.ytd.damage]) },
+      { name:'POD', color:'#B0ADEE', values: data.pod.concat([data.ytd.pod]) },
     ],
     metaTotal: metaOps.concat([metaMaps.apvTotalAnual]),
     height:200
   });
-  buildLegend('legend-apv'+suf, [{name:'Wash',color:'#2E3340'},{name:'Damage',color:'#646C80'},{name:'POD',color:'#AEB4C0'}]);
+  buildLegend('legend-apv'+suf, [{name:'Wash',color:'#171469'},{name:'Damage',color:'#3B36D8'},{name:'POD',color:'#B0ADEE'}]);
 
   const head = `<tr><th>Mês</th>${labels.map(l=>`<th class="num">${l}</th>`).join('')}<th class="num">YTD</th></tr>`;
   document.getElementById('tbl-apv-head'+suf).innerHTML = head;
