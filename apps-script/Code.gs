@@ -55,8 +55,10 @@ function doGet(e) {
       data = getIndisponibilidade(range.start, range.end, city);
     } else if (endpoint === 'claim-apv') {
       data = getClaimApv(range.start, range.end, city);
+    } else if (endpoint === 'claim-detail') {
+      data = getClaimDetail(range.start, range.end, city, params.component);
     } else {
-      data = { detail: 'endpoint inválido — use ?endpoint=indisponibilidade ou ?endpoint=claim-apv' };
+      data = { detail: 'endpoint inválido — use ?endpoint=indisponibilidade, ?endpoint=claim-apv ou ?endpoint=claim-detail' };
     }
     return jsonOutput_(data);
   } catch (err) {
@@ -306,6 +308,168 @@ function round2_(n) {
 }
 
 /* -------------------------------------------------------------------------- */
+/* Claim/APV — drill-down por componente (Pareto 2 níveis + nuvem de palavras) */
+/*                                                                              */
+/* Hoje só "damage" está implementado (fase 1, pedido do Lui). wash/pod         */
+/* respondem {detail:...} até serem implementados no mesmo padrão — nunca      */
+/* erro 500. NÃO reaproveita/edita getClaimApv() — é uma CTE irmã, com 2       */
+/* colunas extras (ReviewSectionGroupName, PostTripReviewComment).            */
+/*                                                                              */
+/* Requisito de privacidade (LGPD, não-negociável — site é público, sem       */
+/* login): o comentário bruto do cliente NUNCA sai do BigQuery. Toda a         */
+/* tokenização/contagem/anonimização roda dentro do SQL (query B abaixo) —    */
+/* stopwords PT, tamanho mínimo de palavra, frequência mínima (HAVING),        */
+/* e exclusão de tokens com formato de placa/número puro.                     */
+/* -------------------------------------------------------------------------- */
+
+var CLAIM_DETAIL_COMPONENTS = {
+  damage: { category: 'Avarias no veículo', extraFilterSql: "AND ReviewItemLabel != 'Cars'" },
+  // wash/pod entram aqui depois, no mesmo padrão. Atenção: getClaimApv() usa
+  // ReviewItemName (não ReviewItemLabel) pra excluir 'Vagas' em POD — conferir
+  // se ReviewItemLabel é mesmo o campo certo pro Pareto nível 2 de POD antes
+  // de só copiar a config de Damage.
+};
+
+// Stopwords em português SEM acento (o pipeline de tokenização remove acento
+// das palavras também, via NORMALIZE(...,NFD) + remoção de \p{Mn} — a lista
+// precisa casar). Curada, não exaustiva — revisar contra o resultado real da
+// 1ª execução em produção e completar com ruído encontrado (é código, não
+// dado; iterar aqui é seguro).
+var DAMAGE_STOPWORDS_PT = [
+  'a','ao','aos','aquela','aquelas','aquele','aqueles','aquilo','as','ate','com','como',
+  'da','das','de','dela','delas','dele','deles','depois','do','dos','e','ela','elas','ele',
+  'eles','em','entao','entre','era','eram','essa','essas','esse','esses','esta','estas',
+  'este','estes','estou','estamos','estao','estava','estavam','estive','eu','foi','foram',
+  'fosse','fui','ha','isso','isto','ja','la','lhe','lhes','lo','mais','mas','me','mesmo',
+  'meu','meus','minha','minhas','muito','muita','muitos','muitas','na','nas','nao','nem',
+  'no','nos','nossa','nossas','nosso','nossos','num','numa','o','os','ou','para','pela',
+  'pelas','pelo','pelos','per','pode','podem','pois','por','porque','porem','qual','quando',
+  'que','quem','se','sem','ser','seu','seus','so','sua','suas','tal','tambem','te','tem',
+  'tendo','tenho','ter','teu','teus','ti','tinha','tinham','tive','tivemos','toda','todas',
+  'todo','todos','tu','tua','tuas','um','uma','umas','uns','vai','vao','vc','voce','voces',
+  'vos','sido','sendo','apos','ai','tipo','pra','pro','bem','aqui','coisa','tava','tao','meio',
+];
+
+function sqlStringList_(arr) {
+  return arr.map(function (w) { return "'" + String(w).replace(/'/g, "\\'") + "'"; }).join(',');
+}
+
+/** CTE irmã da de getClaimApv(), com 2 colunas extras pro drill-down. */
+function claimDetailScopedCte_(city, componentCfg) {
+  var hasCity = !!city;
+  var join = hasCity
+    ? '  LEFT JOIN (SELECT DISTINCT podid, podCity FROM `turbi-dc-ops.ops_geral.vw_frota_historico_contabil`) f ON r.podid = f.podid\n'
+    : '';
+  var cityFilter = hasCity ? '  AND f.podCity = @city\n' : '';
+  return (
+    'WITH base AS (\n' +
+    '  SELECT r.bookingId, r.review_item_category, r.ReviewItemLabel,\n' +
+    '    r.ReviewSectionGroupName, r.PostTripReviewComment\n' +
+    '  FROM `turbi-dc-ops.atendimento.vw_post_trip_review_por_item` r\n' +
+    join +
+    '  WHERE r.dt_conclusao BETWEEN @start_date AND @end_date\n' +
+    cityFilter +
+    '),\n' +
+    'scoped AS (\n' +
+    "  SELECT bookingId, COALESCE(ReviewSectionGroupName, 'Outros/Sem classificação') AS grupo,\n" +
+    '    ReviewItemLabel AS item, PostTripReviewComment AS comentario\n' +
+    '  FROM base\n' +
+    '  WHERE review_item_category = @category\n' +
+    '  ' + componentCfg.extraFilterSql + '\n' +
+    ')\n'
+  );
+}
+
+function getClaimDetail(startDate, endDate, city, component) {
+  var cfg = CLAIM_DETAIL_COMPONENTS[component];
+  if (!cfg) {
+    return { detail: "component inválido ou ainda não implementado — use ?component=damage" };
+  }
+  var hasCity = !!city;
+  var scopedCte = claimDetailScopedCte_(city, cfg);
+  var baseParams = [
+    param_('start_date', 'DATE', startDate),
+    param_('end_date', 'DATE', endDate),
+    param_('category', 'STRING', cfg.category),
+  ];
+  if (hasCity) baseParams.push(param_('city', 'STRING', city));
+
+  // Query A — Pareto nível 1 (grupo) + nível 2 (item) juntos. Nível 1 é derivado
+  // aqui no Apps Script somando os itens de cada grupo — garante por construção
+  // que "soma dos itens do grupo = contagem do grupo" (evita divergência entre
+  // os dois Paretos). COUNT(DISTINCT bookingId+item), não COUNT(*): proteção
+  // contra fan-out da view "por item".
+  var sqlA =
+    scopedCte +
+    "SELECT grupo, item, COUNT(DISTINCT CONCAT(bookingId, '|', item)) AS n " +
+    'FROM scoped GROUP BY grupo, item ORDER BY grupo, n DESC';
+  var rowsA = runQuery_(sqlA, baseParams);
+
+  // Query B — nuvem de palavras, agregada e anonimizada 100% em SQL (o comentário
+  // bruto nunca sai do BigQuery). DISTINCT bookingId+grupo+comentario antes de
+  // tokenizar: a view repete o mesmo comentário em cada item da mesma reserva,
+  // sem isso o mesmo texto seria contado 2x quando há 2 itens no mesmo grupo.
+  var sqlB =
+    scopedCte +
+    ', comments AS (\n' +
+    '  SELECT DISTINCT bookingId, grupo, comentario FROM scoped\n' +
+    "  WHERE comentario IS NOT NULL AND TRIM(comentario) != ''\n" +
+    '),\n' +
+    'tokens AS (\n' +
+    '  SELECT grupo, word\n' +
+    '  FROM comments,\n' +
+    '  UNNEST(SPLIT(\n' +
+    "    REGEXP_REPLACE(\n" +
+    "      REGEXP_REPLACE(NORMALIZE(LOWER(comentario), NFD), r'\\p{Mn}', ''),\n" +
+    "      r'[^a-z0-9\\s]', ' '\n" +
+    '    ),\n' +
+    "    ' '\n" +
+    '  )) AS word\n' +
+    "  WHERE word != ''\n" +
+    ')\n' +
+    'SELECT grupo, word, COUNT(*) AS n\n' +
+    'FROM tokens\n' +
+    'WHERE LENGTH(word) >= 3\n' +
+    '  AND word NOT IN (' + sqlStringList_(DAMAGE_STOPWORDS_PT) + ')\n' +
+    "  AND NOT REGEXP_CONTAINS(word, r'^[0-9]+$')\n" +
+    "  AND NOT REGEXP_CONTAINS(word, r'^[a-z]{3}[0-9]{4}$')\n" +
+    "  AND NOT REGEXP_CONTAINS(word, r'^[a-z]{3}[0-9][a-z][0-9]{2}$')\n" +
+    'GROUP BY grupo, word\n' +
+    'HAVING n >= 3\n' +
+    'ORDER BY grupo, n DESC';
+  var rowsB = runQuery_(sqlB, baseParams);
+
+  return buildClaimDetailResponse_(component, startDate, endDate, rowsA, rowsB);
+}
+
+/** Junta rowsA (grupo,item,n) e rowsB (grupo,word,n) em groups[]. */
+function buildClaimDetailResponse_(component, startDate, endDate, rowsA, rowsB) {
+  var groupsMap = {};
+  var order = [];
+  rowsA.forEach(function (r) {
+    if (!groupsMap[r.grupo]) {
+      groupsMap[r.grupo] = { group: r.grupo, count: 0, items: [], words: [] };
+      order.push(r.grupo);
+    }
+    var g = groupsMap[r.grupo];
+    g.items.push({ label: r.item, count: Number(r.n) });
+    g.count += Number(r.n);
+  });
+  rowsB.forEach(function (r) {
+    if (!groupsMap[r.grupo]) {
+      groupsMap[r.grupo] = { group: r.grupo, count: 0, items: [], words: [] };
+      order.push(r.grupo);
+    }
+    groupsMap[r.grupo].words.push({ word: r.word, count: Number(r.n) });
+  });
+  var groups = order
+    .map(function (k) { return groupsMap[k]; })
+    .sort(function (a, b) { return b.count - a.count; });
+  var totalCount = groups.reduce(function (s, g) { return s + g.count; }, 0);
+  return { component: component, start_date: startDate, end_date: endDate, total_count: totalCount, groups: groups };
+}
+
+/* -------------------------------------------------------------------------- */
 /* Teste manual — rodar do editor do Apps Script antes de implantar           */
 /* -------------------------------------------------------------------------- */
 
@@ -315,4 +479,6 @@ function testeManual() {
   Logger.log('Indisponibilidade Campinas: %s', JSON.stringify(getIndisponibilidade(range.start, range.end, 'Campinas')));
   Logger.log('Claim/APV nacional: %s', JSON.stringify(getClaimApv(range.start, range.end, null)));
   Logger.log('Claim/APV Campinas: %s', JSON.stringify(getClaimApv(range.start, range.end, 'Campinas')));
+  Logger.log('Claim detail damage: %s', JSON.stringify(getClaimDetail(range.start, range.end, null, 'damage')));
+  Logger.log('Claim detail wash (esperado: detail de "não implementado"): %s', JSON.stringify(getClaimDetail(range.start, range.end, null, 'wash')));
 }

@@ -4,6 +4,28 @@ Formato: data + o que mudou e por quê. Foco em decisões de arquitetura e fórm
 substituto do histórico de commits do Git, é um resumo pensado pra quem for dar manutenção sem
 querer ler o diff inteiro.
 
+## 2026-08-22 — Menu lateral + drill-down analítico de APV/Damage
+
+- **Adicionado**: navegação por menu lateral recolhível (persistido em `localStorage`), roteamento
+  por hash (`#rmr`, `#apv/damage`) — cada página busca seu próprio dado sob demanda, o botão
+  "🔄 Atualizar dados" passou a atualizar só a página ativa (antes atualizava tudo de uma vez).
+- **Adicionado**: página **APV → Damage**, novo endpoint `apps-script/Code.gs`
+  (`?endpoint=claim-detail&component=damage`) com Pareto de 2 níveis (grupo/tipo de avaria via
+  `ReviewSectionGroupName`/`ReviewItemLabel`) e nuvem de palavras dos comentários
+  (`PostTripReviewComment`), com filtro de período e cross-filter 100% client-side (clicar numa
+  barra do Pareto de nível 1 filtra nível 2 e a nuvem, sem nova chamada de rede).
+- **Requisito de privacidade aplicado desde o início** (LGPD, site público sem login): a nuvem de
+  palavras nunca recebe texto bruto — toda tokenização/anonimização roda em SQL dentro do
+  `Code.gs` (stopwords PT, tamanho mínimo de palavra, frequência mínima `HAVING n >= 3`, exclusão
+  de tokens com formato de placa/número puro).
+- **Achado documentado**: `total_count` do drill-down conta itens reportados (uma reserva pode ter
+  2+ itens no mesmo grupo), diferente do `%` de Damage do RMR (que conta reservas distintas) — os
+  dois números não batem 1:1 por design, não é bug. Ver nota na UI e no `README.md`.
+- **Pausado**: "Report Open" (avaliação na abertura do carro) — sem fonte de dado localizada no
+  BigQuery ainda; item desabilitado no menu, sem lógica por trás.
+- **Fora desta rodada**: Wash e POD no mesmo padrão de drill-down (endpoint já preparado pra
+  receber, `CLAIM_DETAIL_COMPONENTS` em `Code.gs`).
+
 ## 2026-08-21 — Migração de Lovable/Supabase para Google Apps Script + GitHub Pages
 
 - **Removido**: todo o app React/TanStack Start gerado pelo Lovable, a integração com Supabase

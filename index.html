@@ -103,26 +103,127 @@
   #tt-tooltip { position:fixed; pointer-events:none; background:var(--navy); color:var(--navy-ink); font-size:12px; font-weight:600; padding:5px 10px; border-radius:6px; opacity:0; z-index:1000; transition:opacity .08s; white-space:nowrap; }
   .note { font-size:12px; color:var(--muted); margin:8px 0 16px; }
   .loading-veil { opacity: .45; pointer-events: none; transition: opacity .15s; }
+
+  /* ==================== Menu lateral (sidebar) ==================== */
+  :root { --sidebar-w: 216px; --sidebar-w-collapsed: 60px; --sidebar-transition: 180ms ease; }
+  .app-shell { display:flex; align-items:stretch; min-height:100vh; }
+  .sidebar {
+    flex:0 0 var(--sidebar-w); width:var(--sidebar-w); background:var(--navy); color:var(--navy-ink);
+    display:flex; flex-direction:column; position:sticky; top:0; height:100vh; overflow-x:hidden; overflow-y:auto;
+    transition:flex-basis var(--sidebar-transition), width var(--sidebar-transition); z-index:50;
+  }
+  html.cco-sidebar-collapsed .sidebar, .sidebar.collapsed { flex-basis:var(--sidebar-w-collapsed); width:var(--sidebar-w-collapsed); }
+  html.cco-sidebar-collapsed .nav-label, html.cco-sidebar-collapsed .nav-sublist, html.cco-sidebar-collapsed .brand-text,
+  .sidebar.collapsed .nav-label, .sidebar.collapsed .nav-sublist, .sidebar.collapsed .brand-text { display:none; }
+  html.cco-sidebar-collapsed .nav-item, .sidebar.collapsed .nav-item { justify-content:center; padding:10px 0; }
+  html.cco-sidebar-collapsed .sidebar-toggle, .sidebar.collapsed .sidebar-toggle { transform:rotate(180deg); }
+  .sidebar-head { display:flex; align-items:center; justify-content:space-between; gap:8px; padding:16px 14px; }
+  .sidebar-brand { margin-bottom:0; }
+  .sidebar-toggle { background:transparent; border:1px solid rgba(255,255,255,.25); color:var(--navy-ink); border-radius:6px; width:28px; height:28px; cursor:pointer; flex:none; transition:transform var(--sidebar-transition); }
+  .sidebar-toggle:hover { background:rgba(255,255,255,.08); }
+  .sidebar-nav { list-style:none; margin:8px 0 0; padding:0; flex:1; }
+  .nav-item, .nav-subitem {
+    display:flex; align-items:center; gap:10px; padding:10px 16px; color:var(--navy-ink); text-decoration:none;
+    font-size:14px; font-weight:600; white-space:nowrap; border-left:3px solid transparent; cursor:pointer;
+  }
+  .nav-item:hover, a.nav-subitem:hover { background:rgba(255,255,255,.07); }
+  .nav-item.active, .nav-subitem.active { background:rgba(255,255,255,.12); border-left-color:var(--blue); }
+  .nav-icon { flex:none; width:20px; text-align:center; }
+  .nav-sublist { list-style:none; margin:0; padding:0 0 6px; }
+  .nav-sublist .nav-subitem { padding-left:44px; font-size:13px; font-weight:500; opacity:.9; }
+  .nav-subitem.is-disabled, .nav-item.is-disabled { opacity:.4; cursor:not-allowed; }
+  .main-col { flex:1; min-width:0; }
+  .page[hidden] { display:none; }
+  .mobile-only-btn { display:none; background:transparent; border:none; color:var(--navy-ink); font-size:20px; cursor:pointer; line-height:1; }
+  .sidebar-close { display:none !important; }
+  .sidebar-backdrop { display:none; }
+  .masthead-left { display:flex; align-items:center; gap:12px; }
+  @media (max-width: 880px) {
+    .sidebar { position:fixed; left:0; top:0; height:100vh; width:240px; flex-basis:240px; transform:translateX(-100%); transition:transform var(--sidebar-transition); z-index:200; }
+    .sidebar.mobile-open { transform:translateX(0); }
+    .sidebar-toggle { display:none; }
+    .sidebar-close { display:inline-flex !important; }
+    .mobile-only-btn { display:inline-flex; }
+    .sidebar-backdrop { display:none; position:fixed; inset:0; background:rgba(0,0,0,.4); z-index:150; }
+    .sidebar-backdrop.visible { display:block; }
+  }
+
+  /* ==================== Pareto / nuvem de palavras (APV drill-down) ==================== */
+  .word-cloud { display:flex; flex-wrap:wrap; gap:6px 12px; align-items:baseline; justify-content:center; padding:10px 4px; }
+  .word-cloud span { font-weight:700; color:var(--purple); cursor:default; }
+  .filter-row { display:flex; gap:14px; align-items:center; flex-wrap:wrap; }
+  .filter-row select { font:inherit; padding:6px 10px; border:1px solid var(--line); border-radius:6px; background:var(--surface); color:var(--ink); }
+  .filter-row label { font-size:12.5px; color:var(--muted); display:flex; align-items:center; gap:6px; }
+  #apv-damage-clear-filter { background:var(--surface); border:1px solid var(--line); color:var(--ink); border-radius:6px; padding:6px 12px; font-size:12.5px; cursor:pointer; }
+  #apv-damage-clear-filter:hover { background:var(--surface-2); }
 </style>
 </head>
 <body>
 
-<div id="tt-tooltip"></div>
-<div class="masthead">
-  <div class="masthead-inner">
-    <div>
-      <div class="brandmark">turbi</div>
-      <h1 class="title">RMR - Painel ao vivo</h1>
-    </div>
-    <div class="status-row">
-      <span id="status-msg"></span>
-      <span id="last-update">nunca atualizado</span>
-      <button id="refresh-btn" onclick="atualizarDados()">🔄 Atualizar dados</button>
-    </div>
-  </div>
-</div>
+<!-- síncrono, evita "flash" do menu expandido antes do CSS/JS aplicarem a preferência salva -->
+<script>
+  (function(){
+    try {
+      if (localStorage.getItem('cco:sidebarCollapsed') === '1') {
+        document.documentElement.classList.add('cco-sidebar-collapsed');
+      }
+    } catch(e){}
+  })();
+</script>
 
-<div class="wrap" id="content-area">
+<div id="tt-tooltip"></div>
+
+<div class="app-shell">
+
+  <nav class="sidebar" id="sidebar" aria-label="Navegação principal">
+    <div class="sidebar-head">
+      <div class="brandmark sidebar-brand"><span class="brand-text">turbi</span></div>
+      <button id="sidebar-toggle" class="sidebar-toggle" aria-label="Recolher menu" aria-expanded="true">«</button>
+      <button id="mobile-sidebar-close" class="mobile-only-btn sidebar-close" aria-label="Fechar menu">✕</button>
+    </div>
+    <ul class="sidebar-nav">
+      <li>
+        <a href="#rmr" class="nav-item" data-route="rmr" data-tip="RMR">
+          <span class="nav-icon">📊</span><span class="nav-label">RMR</span>
+        </a>
+      </li>
+      <li class="nav-group">
+        <a href="#apv/damage" class="nav-item" data-route="apv/damage" data-tip="APV">
+          <span class="nav-icon">🛠️</span><span class="nav-label">APV</span>
+        </a>
+        <ul class="nav-sublist">
+          <li><a href="#apv/damage" class="nav-subitem" data-route="apv/damage">Damage</a></li>
+          <li><span class="nav-subitem is-disabled" data-tip="Em breve">Wash</span></li>
+          <li><span class="nav-subitem is-disabled" data-tip="Em breve">POD</span></li>
+        </ul>
+      </li>
+      <li>
+        <span class="nav-item is-disabled" data-tip="Aguardando fonte de dado">
+          <span class="nav-icon">🚗</span><span class="nav-label">Report Open</span>
+        </span>
+      </li>
+    </ul>
+  </nav>
+  <div class="sidebar-backdrop" id="sidebar-backdrop"></div>
+
+  <div class="main-col">
+    <div class="masthead">
+      <div class="masthead-inner">
+        <div class="masthead-left">
+          <button id="mobile-menu-btn" class="mobile-only-btn" aria-label="Abrir menu">☰</button>
+          <h1 class="title" id="page-title">RMR - Painel ao vivo</h1>
+        </div>
+        <div class="status-row">
+          <span id="status-msg"></span>
+          <span id="last-update">nunca atualizado</span>
+          <button id="refresh-btn" onclick="atualizarPaginaAtiva()">🔄 Atualizar dados</button>
+        </div>
+      </div>
+    </div>
+
+    <main id="page-outlet">
+    <section class="page" id="page-rmr" data-page="rmr">
+    <div class="wrap" id="content-area">
 
 <!-- ============================================================ COGS ============================================================ -->
 <div class="sec-head sec-cogs"><span class="sec-num">1</span><h2 class="sec-title">COGS (OPEX)</h2></div>
@@ -210,6 +311,36 @@
 </div>
 
 </div>
+    </section>
+
+    <!-- ============================================================ APV — DAMAGE (drill-down) ============================================================ -->
+    <section class="page" id="page-apv-damage" data-page="apv/damage" hidden>
+    <div class="wrap" id="content-area-apv-damage">
+
+    <div class="sec-head sec-claim"><span class="sec-num">A</span><h2 class="sec-title">APV — Damage (drill-down)</h2></div>
+    <p class="sec-owner">Fonte: BigQuery <code>turbi-dc-ops.atendimento.vw_post_trip_review_por_item</code> — via Google Apps Script (Web App) · Pareto por grupo/tipo de avaria + nuvem de palavras dos comentários</p>
+
+    <div class="subhead">Período <span class="sub-note">controla todos os gráficos desta página</span></div>
+    <div class="card filter-row">
+      <label>De: <select id="apv-damage-start" onchange="loadApvDamage()"></select></label>
+      <label>Até: <select id="apv-damage-end" onchange="loadApvDamage()"></select></label>
+      <button id="apv-damage-clear-filter" onclick="clearApvDamageGroupFilter()" style="display:none">✕ Limpar filtro de grupo</button>
+    </div>
+
+    <div class="subhead">Pareto — por grupo <span class="sub-note">clique numa barra pra filtrar os gráficos abaixo · contagem por item reportado, uma reclamação pode ter mais de um item (não bate 1:1 com o % de Damage do painel RMR, que conta reservas distintas)</span></div>
+    <div class="card"><div id="c-apvDamageL1"></div></div>
+
+    <div class="subhead">Pareto — por tipo de avaria <span class="sub-note" id="apv-damage-l2-caption">todos os grupos</span></div>
+    <div class="card"><div id="c-apvDamageL2"></div></div>
+
+    <div class="subhead">Nuvem de palavras — comentários <span class="sub-note">~15% das avaliações têm comentário · palavras raras (menos de 3 ocorrências) e possíveis dados pessoais nunca aparecem — a contagem é calculada e anonimizada no BigQuery, o texto bruto nunca chega ao navegador</span></div>
+    <div class="card"><div id="c-apvDamageWords" class="word-cloud"></div></div>
+
+    </div>
+    </section>
+    </main>
+  </div>
+</div>
 
 <script>
 // ── Configuração — únicas 2 linhas que mudam se o Web App do Apps Script for reimplantado
@@ -264,6 +395,18 @@ async function fetchWebApp(endpoint, city){
   // O Web App do Apps Script sempre responde HTTP 200, mesmo em erro — o erro vem
   // como {detail: "..."} no corpo, não como status HTTP (diferente do FastAPI antigo).
   if (data && data.detail) throw new Error(`${endpoint}${city ? ' ('+city+')' : ''}: ${data.detail}`);
+  return data;
+}
+
+// Fetch dedicado do drill-down (não reaproveita fetchWebApp — evita qualquer risco de
+// regressão nos 4 usos já validados de indisponibilidade/claim-apv).
+async function fetchClaimDetail(component, startDate, endDate, city){
+  const params = new URLSearchParams({ endpoint: 'claim-detail', component, start_date: startDate, end_date: endDate });
+  if (city) params.set('city', city);
+  const res = await fetch(`${APPS_SCRIPT_URL}?${params.toString()}`);
+  if (!res.ok) throw new Error(`claim-detail (${component}): HTTP ${res.status}`);
+  const data = await res.json();
+  if (data && data.detail) throw new Error(`claim-detail (${component}): ${data.detail}`);
   return data;
 }
 
@@ -501,6 +644,53 @@ function stackedChart(elId, cfg){
   document.getElementById(elId).innerHTML=svg;
 }
 
+// Pareto: barra (contagem) + linha de % acumulado. Reaproveita o mesmo estilo SVG/tooltip
+// de lineBarChart/stackedChart. cfg.selectedLabel destaca uma barra (cross-filter);
+// cfg.groupAttr marca cada barra com data-pareto-group (só usado no Pareto de nível 1).
+function paretoChart(elId, cfg){
+  const W=640, H=cfg.height||220, padL=36, padR=36, padT=20, padB=44;
+  const innerW=W-padL-padR, innerH=H-padT-padB;
+  const n=cfg.labels.length;
+  if (!n) { document.getElementById(elId).innerHTML = '<p class="note">Sem dados no período/filtro selecionado.</p>'; return; }
+  const gap=innerW/n, bw=gap*0.56;
+  const max=Math.max(...cfg.values, 1);
+  const total=cfg.values.reduce((a,b)=>a+b,0) || 1;
+  let acc=0; const cumPct = cfg.values.map(v=>{ acc+=v; return round2((100*acc)/total); });
+  const y=v=>padT+innerH-(v/max)*innerH;
+  const yPct=p=>padT+innerH-(p/100)*innerH;
+  const x=i=>padL+gap*i+(gap-bw)/2;
+  const hasSel = cfg.selectedLabel != null;
+  let svg=`<svg viewBox="0 0 ${W} ${H}" class="chart-svg">`;
+  svg+=`<line x1="${padL}" y1="${y(0)}" x2="${W-padR}" y2="${y(0)}" class="chart-axis"/>`;
+  cfg.values.forEach((v,i)=>{
+    const isSel = hasSel && cfg.labels[i] === cfg.selectedLabel;
+    const opacity = !hasSel || isSel ? 1 : 0.35;
+    const groupAttr = cfg.groupAttr ? ` data-pareto-group="${String(cfg.labels[i]).replace(/"/g,'&quot;')}" style="cursor:pointer"` : '';
+    svg+=`<rect x="${x(i)}" y="${y(v)}" width="${bw}" height="${Math.max(y(0)-y(v),1)}" rx="2" fill="var(--purple)" opacity="${opacity}"${groupAttr} data-tip="${cfg.labels[i]} — ${v} (${cumPct[i]}% acum.)"/>`;
+    svg+=`<text x="${x(i)+bw/2}" y="${y(v)-5}" class="chart-val" text-anchor="middle">${v}</text>`;
+    svg+=`<text x="${x(i)+bw/2}" y="${H-6}" class="chart-lbl" text-anchor="middle">${truncateLabel(cfg.labels[i], 12)}</text>`;
+  });
+  const pts = cfg.values.map((_,i)=> (x(i)+bw/2)+','+yPct(cumPct[i]));
+  svg+=`<polyline points="${pts.join(' ')}" fill="none" stroke="var(--critical)" stroke-width="1.6"/>`;
+  cfg.values.forEach((_,i)=>{ svg+=`<circle cx="${x(i)+bw/2}" cy="${yPct(cumPct[i])}" r="2.6" fill="var(--critical)" data-tip="${cfg.labels[i]} — ${cumPct[i]}% acumulado"/>`; });
+  svg+='</svg>';
+  document.getElementById(elId).innerHTML=svg;
+}
+function truncateLabel(s, n){ s = String(s); return s.length > n ? s.slice(0, n-1) + '…' : s; }
+
+// Nuvem de palavras: HTML/CSS puro (sem SVG), tamanho de fonte proporcional a sqrt(count)
+// pra uma palavra muito frequente não dominar visualmente o quadro todo.
+function wordCloud(elId, words){
+  const el = document.getElementById(elId);
+  if (!words.length) { el.innerHTML = '<span class="note">Sem palavras suficientes no período/filtro (frequência mínima não atingida).</span>'; return; }
+  const minPx=12, maxPx=34;
+  const maxCount = Math.max(...words.map(w=>w.count), 1);
+  el.innerHTML = words.map(w=>{
+    const size = minPx + (maxPx-minPx) * Math.sqrt(w.count/maxCount);
+    return `<span style="font-size:${size.toFixed(0)}px" data-tip="${w.word}: ${w.count} ocorrências">${w.word}</span>`;
+  }).join(' ');
+}
+
 function buildLegend(elId, items){
   document.getElementById(elId).innerHTML = items.map(it=>`<span class="legend-item"><span class="legend-sw" style="background:${it.color}"></span>${it.name}</span>`).join('');
 }
@@ -698,42 +888,231 @@ function renderClaimApv(data, metaMaps, opts){
     `<tr class="tot">${rowCells('Soma', data.soma, metaOps, data.ytd.soma, metaMaps.apvTotalAnual)}</tr>`;
 }
 
-async function atualizarDados(){
+// Lógica pura de busca+render do RMR — sem tratamento de UI (isso é responsabilidade
+// genérica de runLoad(), ver seção do roteador mais abaixo).
+async function atualizarDadosRmr(){
+  const [indispData, indispCpData, apvData, apvCpData, cogsData, metasData] = await Promise.all([
+    fetchWebApp('indisponibilidade'),
+    fetchWebApp('indisponibilidade', 'Campinas'),
+    fetchWebApp('claim-apv'),
+    fetchWebApp('claim-apv', 'Campinas'),
+    getCogsData(),
+    getMetasData(),
+  ]);
+  const metaMaps = buildMetaMaps(metasData);
+  renderCogs(cogsData);
+  renderIndisponibilidade(indispData, metaMaps, {});
+  renderIndisponibilidade(indispCpData, metaMaps, {suffix:'-cp', titlePrefix:'Campinas — '});
+  renderClaimApv(apvData, metaMaps, {});
+  renderClaimApv(apvCpData, metaMaps, {suffix:'-cp', titlePrefix:'Campinas — '});
+}
+
+/* ============================================================================ */
+/* APV — Damage (drill-down): Pareto 2 níveis + nuvem de palavras + cross-filter */
+/* ============================================================================ */
+
+let apvDamageData = null;          // resposta crua do endpoint, cacheada até trocar o período
+let apvDamageSelectedGroup = null; // null = "todos os grupos" | nome do grupo clicado no Pareto nível 1
+let apvDamageMonthsPopulated = false;
+
+function ymRange(startYm, endYear){
+  // Gera ['2026-01', ..., mês atual] — mesmo padrão hardcoded já usado em COGS_MESES.
+  const months = [];
+  const [sy, sm] = startYm.split('-').map(Number);
+  const now = new Date();
+  const endY = endYear != null ? endYear : now.getFullYear();
+  const endM = endYear != null ? 12 : now.getMonth() + 1;
+  for (let y = sy; y <= endY; y++){
+    const mStart = y === sy ? sm : 1;
+    const mEnd = y === endY ? endM : 12;
+    for (let m = mStart; m <= mEnd; m++) months.push(`${y}-${String(m).padStart(2,'0')}`);
+  }
+  return months;
+}
+function lastDayOfMonth(ym){
+  const [y,m] = ym.split('-').map(Number);
+  const d = new Date(y, m, 0).getDate();
+  return `${ym}-${String(d).padStart(2,'0')}`;
+}
+
+function populateApvDamageMonthSelects(){
+  if (apvDamageMonthsPopulated) return;
+  const months = ymRange('2026-01');
+  const startSel = document.getElementById('apv-damage-start');
+  const endSel = document.getElementById('apv-damage-end');
+  const opt = ym => `<option value="${ym}">${mesLabel(ym)}/${ym.slice(0,4)}</option>`;
+  startSel.innerHTML = months.map(opt).join('');
+  endSel.innerHTML = months.map(opt).join('');
+  startSel.value = months[0];
+  endSel.value = months[months.length-1];
+  apvDamageMonthsPopulated = true;
+}
+
+async function loadApvDamage(){
+  const startYm = document.getElementById('apv-damage-start').value;
+  const endYm = document.getElementById('apv-damage-end').value;
+  const startDate = `${startYm}-01`;
+  const endDate = lastDayOfMonth(endYm);
+  apvDamageData = await fetchClaimDetail('damage', startDate, endDate);
+  apvDamageSelectedGroup = null; // trocar o período invalida qualquer filtro de grupo ativo
+  renderApvDamage();
+}
+
+// Combina items/words de todos os grupos (visão "sem filtro") — somando contagens
+// pelo mesmo label/word e reordenando desc. key='items'|'words'.
+function mergeAcrossGroups(groups, key){
+  const idKey = key === 'items' ? 'label' : 'word';
+  const acc = {};
+  groups.forEach(g => g[key].forEach(it => { acc[it[idKey]] = (acc[it[idKey]]||0) + it.count; }));
+  return Object.entries(acc).map(([k,count]) => ({ [idKey]: k, count })).sort((a,b)=>b.count-a.count);
+}
+
+function toggleApvDamageGroupFilter(groupName){
+  apvDamageSelectedGroup = (apvDamageSelectedGroup === groupName) ? null : groupName;
+  renderApvDamage();
+}
+function clearApvDamageGroupFilter(){
+  apvDamageSelectedGroup = null;
+  renderApvDamage();
+}
+document.addEventListener('click', e=>{
+  const b = e.target.closest('[data-pareto-group]');
+  if (b) toggleApvDamageGroupFilter(b.getAttribute('data-pareto-group'));
+});
+
+function renderApvDamage(){
+  if (!apvDamageData) return;
+  const groups = apvDamageData.groups;
+  const sel = apvDamageSelectedGroup;
+
+  paretoChart('c-apvDamageL1', {
+    labels: groups.map(g=>g.group), values: groups.map(g=>g.count),
+    selectedLabel: sel, groupAttr: true, height: 220,
+  });
+
+  const level2Src = sel ? (groups.find(g=>g.group===sel) || {items:[]}).items : mergeAcrossGroups(groups, 'items');
+  paretoChart('c-apvDamageL2', {
+    labels: level2Src.map(i=>i.label), values: level2Src.map(i=>i.count), height: 220,
+  });
+
+  const wordsSrc = sel ? (groups.find(g=>g.group===sel) || {words:[]}).words : mergeAcrossGroups(groups, 'words');
+  wordCloud('c-apvDamageWords', wordsSrc.slice(0, 60));
+
+  document.getElementById('apv-damage-l2-caption').textContent = sel ? `grupo: ${sel}` : 'todos os grupos';
+  document.getElementById('apv-damage-clear-filter').style.display = sel ? '' : 'none';
+}
+
+async function atualizarApvDamage(){
+  populateApvDamageMonthSelects();
+  await loadApvDamage();
+}
+
+/* ============================================================================ */
+/* Roteador por hash (menu lateral) — cada página busca/renderiza seu próprio    */
+/* dado; runLoad() cuida de UI genérica (botão, status, veil) pras duas rotas.   */
+/* ============================================================================ */
+
+const ROUTES = {
+  'rmr': { pageId: 'page-rmr', title: 'RMR - Painel ao vivo', navSelector: '[data-route="rmr"]', load: atualizarDadosRmr },
+  'apv/damage': { pageId: 'page-apv-damage', title: 'APV — Damage', navSelector: '[data-route="apv/damage"]', load: atualizarApvDamage },
+};
+const DEFAULT_ROUTE = 'rmr';
+const loadedRoutes = new Set();
+const lastUpdateByRoute = {};
+let currentRoute = DEFAULT_ROUTE;
+
+function parseHash(){
+  const h = (location.hash || '').replace(/^#/, '');
+  return ROUTES[h] ? h : DEFAULT_ROUTE;
+}
+
+function renderRoute(route){
+  Object.entries(ROUTES).forEach(([key, cfg]) => {
+    document.getElementById(cfg.pageId).hidden = key !== route;
+  });
+  document.querySelectorAll('.nav-item, .nav-subitem').forEach(el => el.classList.remove('active'));
+  document.querySelectorAll(ROUTES[route].navSelector).forEach(el => el.classList.add('active'));
+  document.getElementById('page-title').textContent = ROUTES[route].title;
+  document.title = ROUTES[route].title + ' · turbi CCO';
+  updateLastUpdateLabel(route);
+  closeMobileSidebar();
+}
+
+function updateLastUpdateLabel(route){
+  const d = lastUpdateByRoute[route];
+  document.getElementById('last-update').textContent = d ? ('última atualização: ' + d.toLocaleTimeString('pt-BR')) : 'nunca atualizado';
+}
+
+async function runLoad(route){
   const btn = document.getElementById('refresh-btn');
   const statusMsg = document.getElementById('status-msg');
-  const area = document.getElementById('content-area');
+  const pageEl = document.getElementById(ROUTES[route].pageId);
+  const originalLabel = btn.textContent;
   btn.disabled = true;
-  btn.textContent = '⏳ Consultando BigQuery + Sheets…';
+  btn.textContent = '⏳ Consultando…';
   statusMsg.textContent = '';
   statusMsg.classList.remove('err');
-  area.classList.add('loading-veil');
+  pageEl.classList.add('loading-veil');
   try {
-    const [indispData, indispCpData, apvData, apvCpData, cogsData, metasData] = await Promise.all([
-      fetchWebApp('indisponibilidade'),
-      fetchWebApp('indisponibilidade', 'Campinas'),
-      fetchWebApp('claim-apv'),
-      fetchWebApp('claim-apv', 'Campinas'),
-      getCogsData(),
-      getMetasData(),
-    ]);
-    const metaMaps = buildMetaMaps(metasData);
-    renderCogs(cogsData);
-    renderIndisponibilidade(indispData, metaMaps, {});
-    renderIndisponibilidade(indispCpData, metaMaps, {suffix:'-cp', titlePrefix:'Campinas — '});
-    renderClaimApv(apvData, metaMaps, {});
-    renderClaimApv(apvCpData, metaMaps, {suffix:'-cp', titlePrefix:'Campinas — '});
-    document.getElementById('last-update').textContent = 'última atualização: ' + new Date().toLocaleTimeString('pt-BR');
+    await ROUTES[route].load();
+    lastUpdateByRoute[route] = new Date();
+    loadedRoutes.add(route);
+    if (route === currentRoute) updateLastUpdateLabel(route);
   } catch (e) {
     statusMsg.textContent = 'Falha ao atualizar: ' + e.message;
     statusMsg.classList.add('err');
   } finally {
     btn.disabled = false;
-    btn.textContent = '🔄 Atualizar dados';
-    area.classList.remove('loading-veil');
+    btn.textContent = originalLabel;
+    pageEl.classList.remove('loading-veil');
   }
 }
 
-atualizarDados();
+function atualizarPaginaAtiva(){ return runLoad(currentRoute); }
+
+function onHashChange(){
+  currentRoute = parseHash();
+  renderRoute(currentRoute);
+  if (!loadedRoutes.has(currentRoute)) runLoad(currentRoute);
+}
+window.addEventListener('hashchange', onHashChange);
+
+/* ==================== Sidebar: colapsar (desktop) + drawer (mobile) ==================== */
+
+const SIDEBAR_LS_KEY = 'cco:sidebarCollapsed';
+
+function initSidebarState(){
+  const collapsed = localStorage.getItem(SIDEBAR_LS_KEY) === '1';
+  document.getElementById('sidebar').classList.toggle('collapsed', collapsed);
+  document.getElementById('sidebar-toggle').setAttribute('aria-expanded', String(!collapsed));
+}
+function toggleSidebar(){
+  const sb = document.getElementById('sidebar');
+  const collapsed = sb.classList.toggle('collapsed');
+  document.documentElement.classList.toggle('cco-sidebar-collapsed', collapsed);
+  try { localStorage.setItem(SIDEBAR_LS_KEY, collapsed ? '1' : '0'); } catch(e){}
+  document.getElementById('sidebar-toggle').setAttribute('aria-expanded', String(!collapsed));
+}
+function openMobileSidebar(){
+  document.getElementById('sidebar').classList.add('mobile-open');
+  document.getElementById('sidebar-backdrop').classList.add('visible');
+}
+function closeMobileSidebar(){
+  document.getElementById('sidebar').classList.remove('mobile-open');
+  document.getElementById('sidebar-backdrop').classList.remove('visible');
+}
+document.getElementById('sidebar-toggle').addEventListener('click', toggleSidebar);
+document.getElementById('mobile-menu-btn').addEventListener('click', openMobileSidebar);
+document.getElementById('mobile-sidebar-close').addEventListener('click', closeMobileSidebar);
+document.getElementById('sidebar-backdrop').addEventListener('click', closeMobileSidebar);
+
+function initRouter(){
+  initSidebarState();
+  currentRoute = parseHash();
+  renderRoute(currentRoute);
+  runLoad(currentRoute);
+}
+initRouter();
 </script>
 </body>
 </html>

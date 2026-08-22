@@ -1,8 +1,15 @@
 # turbi-cco — Centro de Controle de Operações
 
-Painel ao vivo dos 3 indicadores centrais da RMR (Reunião Mensal de Resultados) de Operações da Turbi:
-**COGS (OPEX)**, **Indisponibilidade OPS** e **Claim/APV** (reclamação pós-viagem). Site estático,
-sem backend próprio, sem build — abrir `index.html` já é o produto final.
+Painel ao vivo de Operações da Turbi. Site estático, sem backend próprio, sem build — abrir
+`index.html` já é o produto final. Tem um menu lateral recolhível com 2 páginas hoje:
+
+- **RMR** — os 3 indicadores centrais da Reunião Mensal de Resultados: **COGS (OPEX)**,
+  **Indisponibilidade OPS** e **Claim/APV** (reclamação pós-viagem).
+- **APV → Damage** — drill-down analítico de Damage: Pareto de motivos em 2 níveis (grupo + tipo de
+  avaria) e nuvem de palavras dos comentários, com filtro de período e cross-filter (clicar numa
+  barra do Pareto filtra os outros gráficos da página). Wash e POD entram depois, no mesmo padrão.
+  Uma 3ª área, **"Report Open"** (avaliação na abertura do carro), está no roadmap mas pausada —
+  ainda não tem fonte de dado definida.
 
 ## Arquitetura
 
@@ -25,14 +32,25 @@ sem backend próprio, sem build — abrir `index.html` já é o produto final.
   como Web App** (`apps-script/Code.gs`), autorizado com a conta Google do responsável pelo painel —
   sem service account, sem credencial armazenada em lugar nenhum. O código-fonte aqui é só a cópia
   de referência; a implantação real é feita manualmente em [script.google.com](https://script.google.com).
-- **Hospedagem**: GitHub Pages, servindo `index.html` direto da raiz da branch `main`. Sem servidor,
-  sem build, sem deploy — só `git push`.
-- Botão **"🔄 Atualizar dados"** refaz as 6 consultas (2× BigQuery via Apps Script, 2× CSV de Sheets)
-  em tempo real, no navegador de quem estiver com a página aberta.
+- **Hospedagem**: GitHub Pages, servindo `index.html` direto da raiz da branch `main` (repositório
+  público — Pages em repo privado exige GitHub Pro, ver `CHANGELOG.md`). Sem servidor, sem build,
+  sem deploy — só `git push`.
+- **Navegação**: menu lateral recolhível (`localStorage` guarda a preferência), roteamento por hash
+  (`#rmr`, `#apv/damage`) — cada página busca seu próprio dado, só quando visitada pela primeira
+  vez ou quando o botão **"🔄 Atualizar dados"** é clicado com ela ativa (o botão atualiza só a
+  página aberta no momento, nunca as duas de uma vez).
 
 Todas as fórmulas replicam exatamente o painel local original (FastAPI + BigQuery), que foi a versão
 validada numericamente contra o dashboard oficial antes de qualquer migração. Ver
 `apps-script/Code.gs` para os comentários com a origem de cada fórmula.
+
+### Privacidade da nuvem de palavras (não-negociável)
+
+O site é público e sem login. A nuvem de palavras de Damage (comentários de clientes) **nunca**
+recebe texto bruto no navegador — toda a tokenização, remoção de stopwords/acento, e o corte de
+frequência mínima (`HAVING n >= 3`) acontecem dentro do SQL do endpoint `claim-detail`, em
+`apps-script/Code.gs`. Qualquer nova nuvem de palavras adicionada no futuro (Wash, POD, Report
+Open) deve seguir o mesmo padrão — nunca mandar comentário bruto pro cliente.
 
 ## Rodar/testar localmente
 
@@ -46,7 +64,10 @@ pra uma implantação válida do Apps Script.
    implantação atual).
 2. Colar o conteúdo atualizado de `apps-script/Code.gs` no editor (substituindo tudo), `Ctrl+S`.
 3. Rodar a função `testeManual` pelo menos uma vez e conferir o **Registro de execução** — os números
-   devem bater com os já certificados antes de seguir.
+   devem bater com os já certificados antes de seguir. Isso inclui `getClaimDetail` (Damage): a soma
+   de `count` de todos os grupos deve ser da mesma ordem de grandeza do `damage_n` de `getClaimApv()`
+   (não igual — um conta itens, o outro reservas distintas), e nenhuma das palavras da nuvem deve
+   parecer placa/telefone/nome.
 4. `Implantar → Gerenciar implantações → editar (ícone de lápis) → Nova versão → Implantar`.
    **Importante**: reimplantar sem criar uma "Nova versão" mantém o código antigo no ar — sempre
    escolher "Nova versão".
@@ -78,8 +99,15 @@ pra uma implantação válida do Apps Script.
 - COGS tem `meses` fixo em 7 (Jan–Jul) — precisa ser estendido manualmente no código conforme o ano
   avança (`COGS_MONTH_STARTS`/`COGS_MESES` em `index.html`).
 - Mês corrente sempre aparece parcial (a consulta ao BigQuery vai até "ontem").
-- Estratificação de Claim (abrir Wash/Damage/POD em sub-itens) está fora de escopo desta rodada.
-- Layout pensado para desktop — adaptação mobile-first ainda não foi feita.
+- Estratificação de Claim: só **Damage** está implementado (Pareto + nuvem de palavras). Wash e POD
+  ainda não — `?component=wash`/`?component=pod` respondem `{"detail": "..."}` até serem feitos.
+- "Report Open" (avaliação na abertura do carro) está no menu como item desabilitado — sem fonte de
+  dado localizada ainda no BigQuery (ver `RMR OPS - Arquitetura e Decisões Técnicas.md` no Obsidian).
+- Layout pensado para desktop — o menu lateral vira drawer no mobile, mas o resto do
+  mobile-first (tamanhos de gráfico, tabelas) ainda não foi feito.
+- `total_count` do drill-down de Damage conta **itens** reportados, não reservas distintas — uma
+  mesma reserva com 2 itens de Damage conta 2x. Não confundir com o `%` de Damage do RMR (que conta
+  reservas distintas via `COUNT(DISTINCT bookingId)`).
 
 ## Documentação relacionada
 
