@@ -418,14 +418,13 @@ function getClaimDetail(startDate, endDate, city, component) {
     'tokens AS (\n' +
     '  SELECT grupo, word\n' +
     '  FROM comments,\n' +
-    '  UNNEST(SPLIT(\n' +
-    "    REGEXP_REPLACE(\n" +
-    "      REGEXP_REPLACE(NORMALIZE(LOWER(comentario), NFD), r'\\p{Mn}', ''),\n" +
-    "      r'[^a-z0-9\\s]', ' '\n" +
-    '    ),\n' +
-    "    ' '\n" +
+    // REGEXP_EXTRACT_ALL extrai sequências de [a-z0-9] diretamente — evita o bug de
+    // SPLIT(texto, ' ') não quebrar em quebra de linha real (comentário multi-linha
+    // gerava tokens tipo "\n\no" grudando a última palavra de uma linha com a próxima).
+    '  UNNEST(REGEXP_EXTRACT_ALL(\n' +
+    "    REGEXP_REPLACE(NORMALIZE(LOWER(comentario), NFD), r'\\p{Mn}', ''),\n" +
+    "    r'[a-z0-9]+'\n" +
     '  )) AS word\n' +
-    "  WHERE word != ''\n" +
     ')\n' +
     'SELECT grupo, word, COUNT(*) AS n\n' +
     'FROM tokens\n' +
