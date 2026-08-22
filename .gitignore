@@ -4,6 +4,11 @@
 .idea
 .DS_Store
 
+# Cache de ferramentas que algum editor/extensão pode iniciar sem eu pedir — este
+# projeto não tem build, nada disso deveria existir de propósito, mas por segurança:
+.vite/
+node_modules/
+
 # Segredos locais (nunca versionar) — nada disso deveria existir, mas por segurança:
 *.local
 .env
