@@ -5,10 +5,12 @@ Painel ao vivo de Operações da Turbi. Site estático, sem backend próprio, se
 
 - **RMR** — os 3 indicadores centrais da Reunião Mensal de Resultados: **COGS (OPEX)**,
   **Indisponibilidade OPS** e **Claim/APV** (reclamação pós-viagem).
-- **APV → Damage** — drill-down analítico de Damage: Pareto de motivos em 2 níveis (grupo + tipo de
-  avaria) e nuvem de palavras dos comentários, com filtro de período e cross-filter (clicar numa
-  barra do Pareto filtra os outros gráficos da página). Wash e POD entram depois, no mesmo padrão.
-  Uma 3ª área, **"Report Open"** (avaliação na abertura do carro), está no roadmap mas pausada —
+- **APV → Damage / Wash / POD** — drill-down analítico dos 3 componentes de Claim/APV: Pareto de
+  motivos em 2 níveis (grupo + tipo) e nuvem de palavras dos comentários, com filtro de período e
+  cross-filter (clicar numa barra do Pareto filtra os outros gráficos da página). Mesmo padrão pros
+  3, parametrizado por `component` (`apps-script/Code.gs`, `CLAIM_DETAIL_COMPONENTS`) e por
+  `apvIds()` no `index.html`.
+  Uma 4ª área, **"Report Open"** (avaliação na abertura do carro), está no roadmap mas pausada —
   ainda não tem fonte de dado definida.
 
 ## Arquitetura
@@ -46,11 +48,12 @@ validada numericamente contra o dashboard oficial antes de qualquer migração. 
 
 ### Privacidade da nuvem de palavras (não-negociável)
 
-O site é público e sem login. A nuvem de palavras de Damage (comentários de clientes) **nunca**
-recebe texto bruto no navegador — toda a tokenização, remoção de stopwords/acento, e o corte de
-frequência mínima (`HAVING n >= 3`) acontecem dentro do SQL do endpoint `claim-detail`, em
-`apps-script/Code.gs`. Qualquer nova nuvem de palavras adicionada no futuro (Wash, POD, Report
-Open) deve seguir o mesmo padrão — nunca mandar comentário bruto pro cliente.
+O site é público e sem login. A nuvem de palavras (Damage/Wash/POD — comentários de clientes)
+**nunca** recebe texto bruto no navegador — toda a tokenização, remoção de stopwords/acento, e o
+corte de frequência mínima (`HAVING n >= 3`) acontecem dentro do SQL do endpoint `claim-detail`, em
+`apps-script/Code.gs` (tokenização via `REGEXP_EXTRACT_ALL`, não `SPLIT` — ver `CHANGELOG.md` pro
+bug que isso corrigiu). Qualquer componente novo (Report Open) deve seguir o mesmo padrão — nunca
+mandar comentário bruto pro cliente.
 
 ## Rodar/testar localmente
 
@@ -99,8 +102,12 @@ pra uma implantação válida do Apps Script.
 - COGS tem `meses` fixo em 7 (Jan–Jul) — precisa ser estendido manualmente no código conforme o ano
   avança (`COGS_MONTH_STARTS`/`COGS_MESES` em `index.html`).
 - Mês corrente sempre aparece parcial (a consulta ao BigQuery vai até "ontem").
-- Estratificação de Claim: só **Damage** está implementado (Pareto + nuvem de palavras). Wash e POD
-  ainda não — `?component=wash`/`?component=pod` respondem `{"detail": "..."}` até serem feitos.
+- Estratificação de Claim: **Damage, Wash e POD** implementados (Pareto + nuvem de palavras). Wash
+  tem só 1 grupo de nível 1 na taxonomia oficial ("Limpeza e cheiro") — o Pareto de nível 1 dele
+  sempre mostra uma barra só, o de nível 2 (tipo) é o que importa.
+- Pendente (próxima rodada, não esta): ranking de PODs (locais físicos, campo `PodName`) com mais
+  reclamações no total, e quebra do bucket genérico "Other" de Damage (~30% dos itens) usando os
+  comentários específicos desse grupo.
 - "Report Open" (avaliação na abertura do carro) está no menu como item desabilitado — sem fonte de
   dado localizada ainda no BigQuery (ver `RMR OPS - Arquitetura e Decisões Técnicas.md` no Obsidian).
 - Layout pensado para desktop — o menu lateral vira drawer no mobile, mas o resto do

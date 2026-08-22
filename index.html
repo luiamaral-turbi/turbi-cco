@@ -193,8 +193,8 @@
         </a>
         <ul class="nav-sublist">
           <li><a href="#apv/damage" class="nav-subitem" data-route="apv/damage">Damage</a></li>
-          <li><span class="nav-subitem is-disabled" data-tip="Em breve">Wash</span></li>
-          <li><span class="nav-subitem is-disabled" data-tip="Em breve">POD</span></li>
+          <li><a href="#apv/wash" class="nav-subitem" data-route="apv/wash">Wash</a></li>
+          <li><a href="#apv/pod" class="nav-subitem" data-route="apv/pod">POD</a></li>
         </ul>
       </li>
       <li>
@@ -322,9 +322,9 @@
 
     <div class="subhead">Período <span class="sub-note">controla todos os gráficos desta página</span></div>
     <div class="card filter-row">
-      <label>De: <select id="apv-damage-start" onchange="loadApvDamage()"></select></label>
-      <label>Até: <select id="apv-damage-end" onchange="loadApvDamage()"></select></label>
-      <button id="apv-damage-clear-filter" onclick="clearApvDamageGroupFilter()" style="display:none">✕ Limpar filtro de grupo</button>
+      <label>De: <select id="apv-damage-start" onchange="loadApvComponent('damage')"></select></label>
+      <label>Até: <select id="apv-damage-end" onchange="loadApvComponent('damage')"></select></label>
+      <button id="apv-damage-clear-filter" onclick="clearApvComponentGroupFilter('damage')" style="display:none">✕ Limpar filtro de grupo</button>
     </div>
 
     <div class="subhead">Pareto — por grupo <span class="sub-note">clique numa barra pra filtrar os gráficos abaixo · contagem por item reportado, uma reclamação pode ter mais de um item (não bate 1:1 com o % de Damage do painel RMR, que conta reservas distintas)</span></div>
@@ -335,6 +335,58 @@
 
     <div class="subhead">Nuvem de palavras — comentários <span class="sub-note">~15% das avaliações têm comentário · palavras raras (menos de 3 ocorrências) e possíveis dados pessoais nunca aparecem — a contagem é calculada e anonimizada no BigQuery, o texto bruto nunca chega ao navegador</span></div>
     <div class="card"><div id="c-apvDamageWords" class="word-cloud"></div></div>
+
+    </div>
+    </section>
+
+    <!-- ============================================================ APV — WASH (drill-down) ============================================================ -->
+    <section class="page" id="page-apv-wash" data-page="apv/wash" hidden>
+    <div class="wrap" id="content-area-apv-wash">
+
+    <div class="sec-head sec-claim"><span class="sec-num">B</span><h2 class="sec-title">APV — Wash (drill-down)</h2></div>
+    <p class="sec-owner">Fonte: BigQuery <code>turbi-dc-ops.atendimento.vw_post_trip_review_por_item</code> — via Google Apps Script (Web App) · Pareto por grupo/tipo de sujeira + nuvem de palavras dos comentários</p>
+
+    <div class="subhead">Período <span class="sub-note">controla todos os gráficos desta página</span></div>
+    <div class="card filter-row">
+      <label>De: <select id="apv-wash-start" onchange="loadApvComponent('wash')"></select></label>
+      <label>Até: <select id="apv-wash-end" onchange="loadApvComponent('wash')"></select></label>
+      <button id="apv-wash-clear-filter" onclick="clearApvComponentGroupFilter('wash')" style="display:none">✕ Limpar filtro de grupo</button>
+    </div>
+
+    <div class="subhead">Pareto — por grupo <span class="sub-note">clique numa barra pra filtrar os gráficos abaixo · Wash tem 1 grupo só na taxonomia oficial ("Limpeza e cheiro") — o Pareto útil aqui é o de tipo, abaixo</span></div>
+    <div class="card"><div class="tbl-wrap"><div id="c-apvWashL1"></div></div></div>
+
+    <div class="subhead">Pareto — por tipo (sujo por dentro/fora, cheiro etc.) <span class="sub-note" id="apv-wash-l2-caption">todos os grupos</span></div>
+    <div class="card"><div class="tbl-wrap"><div id="c-apvWashL2"></div></div></div>
+
+    <div class="subhead">Nuvem de palavras — comentários <span class="sub-note">palavras raras (menos de 3 ocorrências) e possíveis dados pessoais nunca aparecem — a contagem é calculada e anonimizada no BigQuery, o texto bruto nunca chega ao navegador</span></div>
+    <div class="card"><div id="c-apvWashWords" class="word-cloud"></div></div>
+
+    </div>
+    </section>
+
+    <!-- ============================================================ APV — POD (drill-down) ============================================================ -->
+    <section class="page" id="page-apv-pod" data-page="apv/pod" hidden>
+    <div class="wrap" id="content-area-apv-pod">
+
+    <div class="sec-head sec-claim"><span class="sec-num">C</span><h2 class="sec-title">APV — POD (drill-down)</h2></div>
+    <p class="sec-owner">Fonte: BigQuery <code>turbi-dc-ops.atendimento.vw_post_trip_review_por_item</code> — via Google Apps Script (Web App) · Pareto por grupo/motivo de reclamação de estacionamento + nuvem de palavras. Exclui o rótulo genérico "Vagas" (mesma exclusão da fórmula oficial de POD).</p>
+
+    <div class="subhead">Período <span class="sub-note">controla todos os gráficos desta página</span></div>
+    <div class="card filter-row">
+      <label>De: <select id="apv-pod-start" onchange="loadApvComponent('pod')"></select></label>
+      <label>Até: <select id="apv-pod-end" onchange="loadApvComponent('pod')"></select></label>
+      <button id="apv-pod-clear-filter" onclick="clearApvComponentGroupFilter('pod')" style="display:none">✕ Limpar filtro de grupo</button>
+    </div>
+
+    <div class="subhead">Pareto — por grupo <span class="sub-note">clique numa barra pra filtrar os gráficos abaixo</span></div>
+    <div class="card"><div class="tbl-wrap"><div id="c-apvPodL1"></div></div></div>
+
+    <div class="subhead">Pareto — por motivo <span class="sub-note" id="apv-pod-l2-caption">todos os grupos</span></div>
+    <div class="card"><div class="tbl-wrap"><div id="c-apvPodL2"></div></div></div>
+
+    <div class="subhead">Nuvem de palavras — comentários <span class="sub-note">palavras raras (menos de 3 ocorrências) e possíveis dados pessoais nunca aparecem — a contagem é calculada e anonimizada no BigQuery, o texto bruto nunca chega ao navegador</span></div>
+    <div class="card"><div id="c-apvPodWords" class="word-cloud"></div></div>
 
     </div>
     </section>
@@ -672,7 +724,7 @@ function paretoChart(elId, cfg){
   cfg.values.forEach((v,i)=>{
     const isSel = hasSel && cfg.labels[i] === cfg.selectedLabel;
     const opacity = !hasSel || isSel ? 1 : 0.35;
-    const groupAttr = cfg.groupAttr ? ` data-pareto-group="${String(cfg.labels[i]).replace(/"/g,'&quot;')}" style="cursor:pointer"` : '';
+    const groupAttr = cfg.groupAttr ? ` data-pareto-group="${String(cfg.labels[i]).replace(/"/g,'&quot;')}" data-pareto-component="${cfg.component}" style="cursor:pointer"` : '';
     const lx = x(i)+bw/2, ly = H-padB+14;
     svg+=`<rect x="${x(i)}" y="${y(v)}" width="${bw}" height="${Math.max(y(0)-y(v),1)}" rx="2" fill="var(--purple)" opacity="${opacity}"${groupAttr} data-tip="${cfg.labels[i]} — ${v} (${cumPct[i]}% acum.)"/>`;
     svg+=`<text x="${x(i)+bw/2}" y="${y(v)-5}" class="chart-val" text-anchor="middle">${v}</text>`;
@@ -916,12 +968,28 @@ async function atualizarDadosRmr(){
 }
 
 /* ============================================================================ */
-/* APV — Damage (drill-down): Pareto 2 níveis + nuvem de palavras + cross-filter */
+/* APV — drill-down por componente (Damage/Wash/POD): Pareto 2 níveis + nuvem   */
+/* de palavras + cross-filter. Mesmo padrão pros 3, parametrizado por           */
+/* `component` — ver CLAIM_DETAIL_COMPONENTS em apps-script/Code.gs.            */
 /* ============================================================================ */
 
-let apvDamageData = null;          // resposta crua do endpoint, cacheada até trocar o período
-let apvDamageSelectedGroup = null; // null = "todos os grupos" | nome do grupo clicado no Pareto nível 1
-let apvDamageMonthsPopulated = false;
+const APV_COMPONENTS = ['damage', 'wash', 'pod'];
+
+// Estado por componente — cada um guarda sua própria resposta cacheada e filtro
+// de grupo ativo, independentes entre si (trocar filtro em Damage não mexe em Wash).
+const apvState = {};
+APV_COMPONENTS.forEach(c => { apvState[c] = { data: null, selectedGroup: null, monthsPopulated: false }; });
+
+// IDs seguem o padrão apv-<component>-... / c-apv<Component>... — ver o HTML de
+// cada página (#page-apv-damage, #page-apv-wash, #page-apv-pod).
+function apvIds(component){
+  const Cap = component.charAt(0).toUpperCase() + component.slice(1);
+  return {
+    start: `apv-${component}-start`, end: `apv-${component}-end`,
+    clearBtn: `apv-${component}-clear-filter`, l2Caption: `apv-${component}-l2-caption`,
+    l1: `c-apv${Cap}L1`, l2: `c-apv${Cap}L2`, words: `c-apv${Cap}Words`,
+  };
+}
 
 function ymRange(startYm, endYear){
   // Gera ['2026-01', ..., mês atual] — mesmo padrão hardcoded já usado em COGS_MESES.
@@ -943,27 +1011,31 @@ function lastDayOfMonth(ym){
   return `${ym}-${String(d).padStart(2,'0')}`;
 }
 
-function populateApvDamageMonthSelects(){
-  if (apvDamageMonthsPopulated) return;
+function populateApvMonthSelects(component){
+  const st = apvState[component];
+  if (st.monthsPopulated) return;
+  const ids = apvIds(component);
   const months = ymRange('2026-01');
-  const startSel = document.getElementById('apv-damage-start');
-  const endSel = document.getElementById('apv-damage-end');
+  const startSel = document.getElementById(ids.start);
+  const endSel = document.getElementById(ids.end);
   const opt = ym => `<option value="${ym}">${mesLabel(ym)}/${ym.slice(0,4)}</option>`;
   startSel.innerHTML = months.map(opt).join('');
   endSel.innerHTML = months.map(opt).join('');
   startSel.value = months[0];
   endSel.value = months[months.length-1];
-  apvDamageMonthsPopulated = true;
+  st.monthsPopulated = true;
 }
 
-async function loadApvDamage(){
-  const startYm = document.getElementById('apv-damage-start').value;
-  const endYm = document.getElementById('apv-damage-end').value;
+async function loadApvComponent(component){
+  const ids = apvIds(component);
+  const startYm = document.getElementById(ids.start).value;
+  const endYm = document.getElementById(ids.end).value;
   const startDate = `${startYm}-01`;
   const endDate = lastDayOfMonth(endYm);
-  apvDamageData = await fetchClaimDetail('damage', startDate, endDate);
-  apvDamageSelectedGroup = null; // trocar o período invalida qualquer filtro de grupo ativo
-  renderApvDamage();
+  const st = apvState[component];
+  st.data = await fetchClaimDetail(component, startDate, endDate);
+  st.selectedGroup = null; // trocar o período invalida qualquer filtro de grupo ativo
+  renderApvComponent(component);
 }
 
 // Combina items/words de todos os grupos (visão "sem filtro") — somando contagens
@@ -975,44 +1047,47 @@ function mergeAcrossGroups(groups, key){
   return Object.entries(acc).map(([k,count]) => ({ [idKey]: k, count })).sort((a,b)=>b.count-a.count);
 }
 
-function toggleApvDamageGroupFilter(groupName){
-  apvDamageSelectedGroup = (apvDamageSelectedGroup === groupName) ? null : groupName;
-  renderApvDamage();
+function toggleApvComponentGroupFilter(component, groupName){
+  const st = apvState[component];
+  st.selectedGroup = (st.selectedGroup === groupName) ? null : groupName;
+  renderApvComponent(component);
 }
-function clearApvDamageGroupFilter(){
-  apvDamageSelectedGroup = null;
-  renderApvDamage();
+function clearApvComponentGroupFilter(component){
+  apvState[component].selectedGroup = null;
+  renderApvComponent(component);
 }
 document.addEventListener('click', e=>{
   const b = e.target.closest('[data-pareto-group]');
-  if (b) toggleApvDamageGroupFilter(b.getAttribute('data-pareto-group'));
+  if (b) toggleApvComponentGroupFilter(b.getAttribute('data-pareto-component'), b.getAttribute('data-pareto-group'));
 });
 
-function renderApvDamage(){
-  if (!apvDamageData) return;
-  const groups = apvDamageData.groups;
-  const sel = apvDamageSelectedGroup;
+function renderApvComponent(component){
+  const st = apvState[component];
+  if (!st.data) return;
+  const ids = apvIds(component);
+  const groups = st.data.groups;
+  const sel = st.selectedGroup;
 
-  paretoChart('c-apvDamageL1', {
+  paretoChart(ids.l1, {
     labels: groups.map(g=>g.group), values: groups.map(g=>g.count),
-    selectedLabel: sel, groupAttr: true, height: 220,
+    selectedLabel: sel, groupAttr: true, component, height: 220,
   });
 
   const level2Src = sel ? (groups.find(g=>g.group===sel) || {items:[]}).items : mergeAcrossGroups(groups, 'items');
-  paretoChart('c-apvDamageL2', {
+  paretoChart(ids.l2, {
     labels: level2Src.map(i=>i.label), values: level2Src.map(i=>i.count), height: 220,
   });
 
   const wordsSrc = sel ? (groups.find(g=>g.group===sel) || {words:[]}).words : mergeAcrossGroups(groups, 'words');
-  wordCloud('c-apvDamageWords', wordsSrc.slice(0, 60));
+  wordCloud(ids.words, wordsSrc.slice(0, 60));
 
-  document.getElementById('apv-damage-l2-caption').textContent = sel ? `grupo: ${sel}` : 'todos os grupos';
-  document.getElementById('apv-damage-clear-filter').style.display = sel ? '' : 'none';
+  document.getElementById(ids.l2Caption).textContent = sel ? `grupo: ${sel}` : 'todos os grupos';
+  document.getElementById(ids.clearBtn).style.display = sel ? '' : 'none';
 }
 
-async function atualizarApvDamage(){
-  populateApvDamageMonthSelects();
-  await loadApvDamage();
+async function atualizarApvComponent(component){
+  populateApvMonthSelects(component);
+  await loadApvComponent(component);
 }
 
 /* ============================================================================ */
@@ -1022,7 +1097,9 @@ async function atualizarApvDamage(){
 
 const ROUTES = {
   'rmr': { pageId: 'page-rmr', title: 'RMR - Painel ao vivo', navSelector: '[data-route="rmr"]', load: atualizarDadosRmr },
-  'apv/damage': { pageId: 'page-apv-damage', title: 'APV — Damage', navSelector: '[data-route="apv/damage"]', load: atualizarApvDamage },
+  'apv/damage': { pageId: 'page-apv-damage', title: 'APV — Damage', navSelector: '[data-route="apv/damage"]', load: () => atualizarApvComponent('damage') },
+  'apv/wash': { pageId: 'page-apv-wash', title: 'APV — Wash', navSelector: '[data-route="apv/wash"]', load: () => atualizarApvComponent('wash') },
+  'apv/pod': { pageId: 'page-apv-pod', title: 'APV — POD', navSelector: '[data-route="apv/pod"]', load: () => atualizarApvComponent('pod') },
 };
 const DEFAULT_ROUTE = 'rmr';
 const loadedRoutes = new Set();

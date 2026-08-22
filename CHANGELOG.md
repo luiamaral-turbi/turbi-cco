@@ -4,6 +4,34 @@ Formato: data + o que mudou e por quê. Foco em decisões de arquitetura e fórm
 substituto do histórico de commits do Git, é um resumo pensado pra quem for dar manutenção sem
 querer ler o diff inteiro.
 
+## 2026-08-22 (3) — Wash e POD no mesmo padrão de drill-down do Damage
+
+- **Adicionado**: páginas **APV → Wash** e **APV → POD**, reaproveitando o endpoint
+  `claim-detail` (`?component=wash`/`?component=pod`) — `CLAIM_DETAIL_COMPONENTS` no `Code.gs` já
+  tinha sido desenhado extensível pra isso.
+- **Refatorado**: as funções JS específicas de Damage (`loadApvDamage`, `renderApvDamage`, etc.)
+  viraram genéricas parametrizadas por `component` (`loadApvComponent`, `renderApvComponent`,
+  `apvIds()`) — evita triplicar a mesma lógica pros 3 componentes. Estado (`apvState`) agora é um
+  objeto por componente, cada um com seu próprio filtro de grupo/cache, independentes entre si.
+- **Cuidado ao copiar o padrão**: POD exclui pelo rótulo genérico **`ReviewItemName = 'Vagas'`**,
+  não `ReviewItemLabel` como Damage (`'Cars'`) — são campos diferentes na fórmula oficial já
+  validada em `getClaimApv()`, não é engano. Adicionado `ReviewItemName` na CTE base do
+  drill-down (`claimDetailScopedCte_`) pra viabilizar esse filtro. Wash não tem exclusão nenhuma.
+- **Achado**: Wash tem só 1 valor de `ReviewSectionGroupName` ("Limpeza e cheiro") — o Pareto de
+  nível 1 dele sempre mostra 1 barra. Documentado na UI como esperado, não bug.
+- **Corrigido**: bug de tokenização da nuvem de palavras — `SPLIT(texto, ' ')` não quebrava em
+  quebra de linha real dentro de comentários multi-linha, produzindo tokens quebrados (ex.:
+  `"\n\no"`) que apareciam na nuvem de palavras. Trocado por `REGEXP_EXTRACT_ALL(texto,
+  r'[a-z0-9]+')`, que extrai palavras diretamente e ignora qualquer tipo de separador. Achado e
+  corrigido antes de qualquer publicação, validado via `testeManual` com resultado limpo.
+- **Corrigido**: rótulos do Pareto de nível 2 se sobrepondo quando há muitas categorias (Damage
+  tem ~24 tipos de avaria). `paretoChart` agora escala a largura do SVG com o número de barras,
+  rotaciona rótulos -40° e fica num container com scroll horizontal (`.tbl-wrap`). Também ganhou a
+  linha de referência 80% clássica do Pareto.
+- **Fora desta rodada** (decisão explícita, próxima prioridade): ranking de PODs físicos
+  (`PodName`) com mais reclamações no total, e quebra do bucket "Other" de Damage (~30% dos itens,
+  taxonomia rasa) usando os comentários específicos desse grupo.
+
 ## 2026-08-22 — Menu lateral + drill-down analítico de APV/Damage
 
 - **Adicionado**: navegação por menu lateral recolhível (persistido em `localStorage`), roteamento

@@ -310,9 +310,9 @@ function round2_(n) {
 /* -------------------------------------------------------------------------- */
 /* Claim/APV — drill-down por componente (Pareto 2 níveis + nuvem de palavras) */
 /*                                                                              */
-/* Hoje só "damage" está implementado (fase 1, pedido do Lui). wash/pod         */
-/* respondem {detail:...} até serem implementados no mesmo padrão — nunca      */
-/* erro 500. NÃO reaproveita/edita getClaimApv() — é uma CTE irmã, com 2       */
+/* damage, wash e pod implementados (mesmo padrão, config em                   */
+/* CLAIM_DETAIL_COMPONENTS). Componente desconhecido responde {detail:...} —   */
+/* nunca erro 500. NÃO reaproveita/edita getClaimApv() — é uma CTE irmã, com   */
 /* colunas extras (ReviewSectionGroupName, PostTripReviewComment).            */
 /*                                                                              */
 /* Requisito de privacidade (LGPD, não-negociável — site é público, sem       */
@@ -322,20 +322,23 @@ function round2_(n) {
 /* e exclusão de tokens com formato de placa/número puro.                     */
 /* -------------------------------------------------------------------------- */
 
+// extraFilterSql referencia as colunas BRUTAS de `base` (ReviewItemLabel/ReviewItemName),
+// não os aliases de `scoped` — mesmos campos de exclusão já validados em getClaimApv().
+// Damage exclui pelo rótulo genérico em ReviewItemLabel ('Cars'); POD exclui pelo rótulo
+// genérico em ReviewItemName ('Vagas') — campos DIFERENTES, não é engano copiar errado.
+// Wash não tem exclusão na fórmula oficial.
 var CLAIM_DETAIL_COMPONENTS = {
   damage: { category: 'Avarias no veículo', extraFilterSql: "AND ReviewItemLabel != 'Cars'" },
-  // wash/pod entram aqui depois, no mesmo padrão. Atenção: getClaimApv() usa
-  // ReviewItemName (não ReviewItemLabel) pra excluir 'Vagas' em POD — conferir
-  // se ReviewItemLabel é mesmo o campo certo pro Pareto nível 2 de POD antes
-  // de só copiar a config de Damage.
+  wash: { category: 'Limpeza e cheiro', extraFilterSql: '' },
+  pod: { category: 'Estacionamento', extraFilterSql: "AND ReviewItemName != 'Vagas'" },
 };
 
 // Stopwords em português SEM acento (o pipeline de tokenização remove acento
 // das palavras também, via NORMALIZE(...,NFD) + remoção de \p{Mn} — a lista
 // precisa casar). Curada, não exaustiva — revisar contra o resultado real da
 // 1ª execução em produção e completar com ruído encontrado (é código, não
-// dado; iterar aqui é seguro).
-var DAMAGE_STOPWORDS_PT = [
+// dado; iterar aqui é seguro). Compartilhada pelos 3 componentes.
+var CLAIM_DETAIL_STOPWORDS_PT = [
   'a','ao','aos','aquela','aquelas','aquele','aqueles','aquilo','as','ate','com','como',
   'da','das','de','dela','delas','dele','deles','depois','do','dos','e','ela','elas','ele',
   'eles','em','entao','entre','era','eram','essa','essas','esse','esses','esta','estas',
@@ -363,7 +366,7 @@ function claimDetailScopedCte_(city, componentCfg) {
   var cityFilter = hasCity ? '  AND f.podCity = @city\n' : '';
   return (
     'WITH base AS (\n' +
-    '  SELECT r.bookingId, r.review_item_category, r.ReviewItemLabel,\n' +
+    '  SELECT r.bookingId, r.review_item_category, r.ReviewItemLabel, r.ReviewItemName,\n' +
     '    r.ReviewSectionGroupName, r.PostTripReviewComment\n' +
     '  FROM `turbi-dc-ops.atendimento.vw_post_trip_review_por_item` r\n' +
     join +
@@ -429,7 +432,7 @@ function getClaimDetail(startDate, endDate, city, component) {
     'SELECT grupo, word, COUNT(*) AS n\n' +
     'FROM tokens\n' +
     'WHERE LENGTH(word) >= 3\n' +
-    '  AND word NOT IN (' + sqlStringList_(DAMAGE_STOPWORDS_PT) + ')\n' +
+    '  AND word NOT IN (' + sqlStringList_(CLAIM_DETAIL_STOPWORDS_PT) + ')\n' +
     "  AND NOT REGEXP_CONTAINS(word, r'^[0-9]+$')\n" +
     "  AND NOT REGEXP_CONTAINS(word, r'^[a-z]{3}[0-9]{4}$')\n" +
     "  AND NOT REGEXP_CONTAINS(word, r'^[a-z]{3}[0-9][a-z][0-9]{2}$')\n" +
@@ -479,5 +482,7 @@ function testeManual() {
   Logger.log('Claim/APV nacional: %s', JSON.stringify(getClaimApv(range.start, range.end, null)));
   Logger.log('Claim/APV Campinas: %s', JSON.stringify(getClaimApv(range.start, range.end, 'Campinas')));
   Logger.log('Claim detail damage: %s', JSON.stringify(getClaimDetail(range.start, range.end, null, 'damage')));
-  Logger.log('Claim detail wash (esperado: detail de "não implementado"): %s', JSON.stringify(getClaimDetail(range.start, range.end, null, 'wash')));
+  Logger.log('Claim detail wash: %s', JSON.stringify(getClaimDetail(range.start, range.end, null, 'wash')));
+  Logger.log('Claim detail pod: %s', JSON.stringify(getClaimDetail(range.start, range.end, null, 'pod')));
+  Logger.log('Claim detail componente inválido (esperado: detail de erro amigável): %s', JSON.stringify(getClaimDetail(range.start, range.end, null, 'foo')));
 }
