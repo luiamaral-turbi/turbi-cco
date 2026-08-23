@@ -366,14 +366,14 @@
     </div>
 
     <div class="subhead">Evolução semanal — real (Cálculo BQ direto) x meta <span class="sub-note">período selecionado · barra verde = dentro da meta · vermelha = acima</span></div>
-    <div class="card"><div id="c-indispOvWeekly"></div><div class="legend-row"><span class="legend-item"><span class="legend-sw" style="background:var(--good)"></span>Dentro da meta</span><span class="legend-item"><span class="legend-sw" style="background:var(--critical)"></span>Acima da meta</span><span class="legend-item"><span class="legend-line"></span>Meta</span></div></div>
+    <div class="card"><div class="tbl-wrap"><div id="c-indispOvWeekly"></div></div><div class="legend-row"><span class="legend-item"><span class="legend-sw" style="background:var(--good)"></span>Dentro da meta</span><span class="legend-item"><span class="legend-sw" style="background:var(--critical)"></span>Acima da meta</span><span class="legend-item"><span class="legend-line"></span>Meta</span></div></div>
 
     <div class="subhead">Últimos 30 dias corridos <span class="sub-note">janela fixa hoje-30..ontem, independente do filtro de período acima — pra ver tendência recente</span></div>
-    <div class="card"><div id="c-indispOvLast30"></div><div class="legend-row"><span class="legend-item"><span class="legend-sw" style="background:var(--good)"></span>Dentro da meta</span><span class="legend-item"><span class="legend-sw" style="background:var(--critical)"></span>Acima da meta</span><span class="legend-item"><span class="legend-line"></span>Meta</span></div></div>
+    <div class="card"><div class="tbl-wrap"><div id="c-indispOvLast30"></div></div><div class="legend-row"><span class="legend-item"><span class="legend-sw" style="background:var(--good)"></span>Dentro da meta</span><span class="legend-item"><span class="legend-sw" style="background:var(--critical)"></span>Acima da meta</span><span class="legend-item"><span class="legend-line"></span>Meta</span></div></div>
 
     <div class="subhead">Indisponibilidade por categoria <span class="sub-note">período selecionado · soma das categorias = Cálculo BQ direto</span></div>
     <div class="card"><div id="c-indispOvCat"></div><div class="legend-row" id="legend-indisp-ov"></div></div>
-    <div class="tbl-wrap card" style="margin-top:14px"><table class="dtbl"><thead><tr><th>Categoria</th><th>Responsável</th><th class="num">%</th><th class="num">Carros-dia</th></tr></thead><tbody id="tbl-indisp-overview-category"></tbody></table></div>
+    <div class="tbl-wrap card" style="margin-top:14px"><table class="dtbl"><thead><tr><th>Categoria</th><th class="num">%</th><th class="num">Carros-dia</th></tr></thead><tbody id="tbl-indisp-overview-category"></tbody></table></div>
 
     <div class="subhead">Top modelos e categoria de veículo <span class="sub-note">mín. 5 veículos distintos — evita ranking distorcido por 1-2 carros</span></div>
     <div class="grid-lines">
@@ -395,14 +395,14 @@
       </div>
 
       <div class="subhead">Evolução semanal — Campinas</div>
-      <div class="card"><div id="c-indispOvWeekly-cp"></div></div>
+      <div class="card"><div class="tbl-wrap"><div id="c-indispOvWeekly-cp"></div></div></div>
 
       <div class="subhead">Últimos 30 dias corridos — Campinas</div>
-      <div class="card"><div id="c-indispOvLast30-cp"></div></div>
+      <div class="card"><div class="tbl-wrap"><div id="c-indispOvLast30-cp"></div></div></div>
 
       <div class="subhead">Por categoria — Campinas</div>
       <div class="card"><div id="c-indispOvCat-cp"></div><div class="legend-row" id="legend-indisp-ov-cp"></div></div>
-      <div class="tbl-wrap card" style="margin-top:14px"><table class="dtbl"><thead><tr><th>Categoria</th><th>Responsável</th><th class="num">%</th><th class="num">Carros-dia</th></tr></thead><tbody id="tbl-indisp-overview-category-cp"></tbody></table></div>
+      <div class="tbl-wrap card" style="margin-top:14px"><table class="dtbl"><thead><tr><th>Categoria</th><th class="num">%</th><th class="num">Carros-dia</th></tr></thead><tbody id="tbl-indisp-overview-category-cp"></tbody></table></div>
 
       <div class="subhead">Top modelos e categoria de veículo — Campinas</div>
       <div class="grid-lines">
@@ -888,20 +888,28 @@ function buildMetaMaps(metas){
 }
 
 function lineBarChart(elId, cfg){
-  const W=640, H=cfg.height||150, padL=30, padR=8, padT=20, padB=20;
-  const innerW=W-padL-padR, innerH=H-padT-padB;
   const dec = cfg.decimals!=null?cfg.decimals:1;
   const unit = cfg.unit!=null?cfg.unit:'%';
   const s1name = cfg.name1 || 'Real';
+  const n = cfg.values.length;
+  // Largura cresce com o número de barras (mín. 34px por barra) — com muitas séries (ex.
+  // tendência semanal de um período longo, 30+ pontos), rótulos e valores num SVG de largura
+  // fixa colidem. Mesmo padrão já usado no paretoChart: o container (.tbl-wrap) tem scroll
+  // horizontal pra caber sem espremer; gráficos pequenos (9 pontos, RMR/COGS) ficam do mesmo
+  // jeito de sempre, já que 640px continua sendo o mínimo.
+  const padL=30, padR=8, padT=20, padB=20;
+  const W=Math.max(640, padL+padR+n*34), H=cfg.height||150;
+  const innerW=W-padL-padR, innerH=H-padT-padB;
   let allVals=cfg.values.slice();
   if(cfg.meta) allVals=allVals.concat(cfg.meta.filter(v=>v!=null));
   let max=Math.max(...allVals), min=Math.min(0,...allVals);
   if(max===min) max=min+1;
-  const range=max-min, n=cfg.values.length, gap=innerW/n;
+  const range=max-min, gap=innerW/n;
   const y=v=>padT+innerH-((v-min)/range)*innerH;
   const bw=gap*0.56;
   const x=i=>padL+gap*i+(gap-bw)/2;
-  let svg=`<svg viewBox="0 0 ${W} ${H}" class="chart-svg">`;
+  const wideStyle = W>640 ? ` style="width:${W}px;max-width:none;display:block"` : '';
+  let svg=`<svg viewBox="0 0 ${W} ${H}" class="chart-svg"${wideStyle}>`;
   svg+=`<line x1="${padL}" y1="${y(0)}" x2="${W-padR}" y2="${y(0)}" class="chart-axis"/>`;
   cfg.values.forEach((v,i)=>{
     const bx=x(i), bh=Math.abs(y(v)-y(0)), by=Math.min(y(v),y(0));
@@ -1329,8 +1337,8 @@ async function loadIndispOverview(){
     getMetasData(),
   ]);
   indispOverviewData = nacional; // Pareto de sub-motivo é nacional, sem quebra por cidade
-  renderIndispOverviewBlock(nacional, metas.indisponibilidade.mensal, {});
-  renderIndispOverviewBlock(campinas, metas.indisponibilidade.mensal, { suffix: '-cp' });
+  renderIndispOverviewBlock(nacional, metas.indisponibilidade, {});
+  renderIndispOverviewBlock(campinas, metas.indisponibilidade, { suffix: '-cp' });
   renderIndispOverviewSubstatus();
 }
 
@@ -1353,19 +1361,22 @@ function renderIndispOverviewSubstatus(){
 
 // Renderiza um bloco inteiro (Geral OU Campinas, via opts.suffix) — mesmo padrão de
 // renderIndisponibilidade()/renderClaimApv() já usados na aba RMR.
-function renderIndispOverviewBlock(data, metaMensal, opts){
+function renderIndispOverviewBlock(data, metaIndisp, opts){
   opts = opts || {};
   const suf = opts.suffix || '';
   const b = data.baseline;
-  const totalCarrosDia = round2(data.byCategory.reduce((s,c)=>s+c.carrosDia,0));
+  const metaMensal = metaIndisp.mensal;
+  const metaAnual = metaIndisp.anual;
   const catsByPct = data.byCategory.slice().sort((a,b)=>b.pct-a.pct);
   const piorSemanaIdx = data.weekly.bqDireto.length
     ? data.weekly.bqDireto.reduce((best,v,i)=> v>data.weekly.bqDireto[best]?i:best, 0)
     : -1;
+  const ultimaSemanaIdx = data.weekly.bqDireto.length - 1;
+  const metaUltimaSemana = ultimaSemanaIdx>=0 ? metaParaData_(data.weekly.labels[ultimaSemanaIdx], metaMensal) : null;
 
   document.getElementById('indisp-overview-heroes'+suf).innerHTML = `
-    <div class="hero-card"><div class="hero-eye">Cálculo BQ direto — período</div><div class="hero-num">${b.bqDireto.toFixed(2)}%</div></div>
-    <div class="hero-card"><div class="hero-eye">Carros-dia perdidos no período</div><div class="hero-num">${totalCarrosDia.toLocaleString('pt-BR')}</div></div>
+    <div class="hero-card"><div class="hero-eye">Semana mais recente (${ultimaSemanaIdx>=0?weekLabel_(data.weekly.labels[ultimaSemanaIdx]):'—'})</div><div class="hero-num">${ultimaSemanaIdx>=0?data.weekly.bqDireto[ultimaSemanaIdx].toFixed(2)+'%':'—'}</div><div class="hero-sub">${metaUltimaSemana!=null?`Meta ${metaUltimaSemana.toFixed(2)}% · ${data.weekly.bqDireto[ultimaSemanaIdx]<=metaUltimaSemana?'dentro da meta':'acima da meta'}`:'Meta não disponível'}</div></div>
+    <div class="hero-card"><div class="hero-eye">Cálculo BQ direto — período selecionado</div><div class="hero-num">${b.bqDireto.toFixed(2)}%</div><div class="hero-sub">${metaAnual!=null?`Meta 2026 (anual): ${metaAnual.toFixed(2)}%`:'Meta anual não disponível'}</div></div>
     <div class="hero-card"><div class="hero-eye">Pior semana do período</div><div class="hero-num">${piorSemanaIdx>=0?data.weekly.bqDireto[piorSemanaIdx].toFixed(2)+'%':'—'}</div><div class="hero-sub">${piorSemanaIdx>=0?weekLabel_(data.weekly.labels[piorSemanaIdx]):''}</div></div>
   `;
 
@@ -1393,7 +1404,7 @@ function renderIndispOverviewBlock(data, metaMensal, opts){
   const catHeatMax = Math.max(...catsByPct.map(c=>c.pct), 0.01);
   document.getElementById('tbl-indisp-overview-category'+suf).innerHTML = catsByPct.map(c => {
     const style = `background:${heatColor(c.pct,0,catHeatMax)};color:${heatTextColor(c.pct,0,catHeatMax)}`;
-    return `<tr><td><span class="legend-sw" style="background:${c.color};display:inline-block;margin-right:6px"></span>${c.name}</td><td>${c.responsavel}</td><td class="num" style="${style}">${c.pct.toFixed(2)}%</td><td class="num">${c.carrosDia.toLocaleString('pt-BR')}</td></tr>`;
+    return `<tr><td><span class="legend-sw" style="background:${c.color};display:inline-block;margin-right:6px"></span>${c.name}</td><td class="num" style="${style}">${c.pct.toFixed(2)}%</td><td class="num">${c.carrosDia.toLocaleString('pt-BR')}</td></tr>`;
   }).join('');
 
   document.getElementById('tbl-indisp-overview-model'+suf).innerHTML = indispDimRowsHtml_(data.byModel, 'label');
