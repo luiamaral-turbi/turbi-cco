@@ -53,6 +53,8 @@ function doGet(e) {
     var data;
     if (endpoint === 'indisponibilidade') {
       data = getIndisponibilidade(range.start, range.end, city);
+    } else if (endpoint === 'indisponibilidade-overview') {
+      data = getIndisponibilidadeOverview(range.start, range.end);
     } else if (endpoint === 'claim-apv') {
       data = getClaimApv(range.start, range.end, city);
     } else if (endpoint === 'claim-detail') {
@@ -210,6 +212,217 @@ function getIndisponibilidade(startDate, endDate, city) {
   var ytdBqDireto = round2_((100 * ytdSegCatTotal) / ytdTotalSegAll);
 
   return { meses: meses, categorias: categorias, bq_direto: bqDireto, ytd_bq_direto: ytdBqDireto };
+}
+
+/* -------------------------------------------------------------------------- */
+/* Indisponibilidade — Visão Geral (investigação, 100% aditiva)               */
+/*                                                                              */
+/* GUARDRAIL: nunca lê nem altera getIndisponibilidade() — CTE, lista de       */
+/* categorias e SQL totalmente separados. Se um dia CATEGORIAS mudar, a lista  */
+/* INDISP_STATUS_LIST_SQL abaixo precisa ser atualizada junto (mantida         */
+/* literal, não derivada de CATEGORIAS, de propósito — evita qualquer          */
+/* acoplamento oculto com a função oficial).                                  */
+/*                                                                              */
+/* Achado da investigação de schema (2026-08-23): vsd_status/vsd_substatus,    */
+/* na MESMA view, já dão a granularidade STATUS×SUBSTATUS que o projeto CCO    */
+/* usa separadamente (ops_geral.tb_indicadores_regiao) — não precisou          */
+/* reconciliar com outra fonte, o dado já está aqui, mesmo grão de linha.      */
+/* bu_responsavel foi checado e NÃO é o mapeamento Fabio/Lucas/Ricardo (só     */
+/* separa RAC x Seminovos, quase todo o volume é RAC) — mantido o mapeamento   */
+/* manual por categoria abaixo, como já decidido.                            */
+/* -------------------------------------------------------------------------- */
+
+var INDISP_STATUS_LIST_SQL =
+  "'09-Sinistro','06-Lavagem','15-Preparando a Desmobilizacao','11-Outros'," +
+  "'08-Mudanca de Pod','07-Revisao','13-Bateria baixa','10-Manutencao de Pneus'," +
+  "'12-Sem Comunicacao','17-Manut. IOT','19-Falha instalação','OPERATIONAL'";
+
+// Tabela pequena + default — trocar responsável ou reorganizar estrutura é editar aqui,
+// nada mais. Chaves usam CATEGORIAS[].name (não o status_ajustado bruto).
+var INDISP_CATEGORIA_RESPONSAVEL = {
+  'Sinistro': 'Fabio Carvalho',
+  'Prep. Desmobilização': 'Fabio Carvalho',
+};
+var INDISP_RESPONSAVEL_DEFAULT = 'Lucas Lopes + Ricardo Marguliano';
+
+// Piso de VEÍCULOS DISTINTOS (não segundos) pra entrar nos rankings de modelo/POD — um
+// modelo/POD com 1-2 carros pode ficar preso em Sinistro o período inteiro e aparecer a
+// 100%, sem ser um padrão de verdade. Segundos totais sozinho não pega esse caso (achado
+// ao validar: "Renegade" tinha só 1 carro, 233 dias-veículo, 100% indisponível — ruído,
+// não achado).
+var INDISP_MIN_VEICULOS = 5;
+
+function indispOverviewBaseCte_() {
+  return (
+    'WITH base AS (\n' +
+    '  SELECT dt_result, status_ajustado, segundos_no_status, vsd_substatus, vehicleId,\n' +
+    '    vehiclemodel, vehicleCategory, idade_carro, podid, podName, podCity\n' +
+    '  FROM `turbi-dc-ops.ops_geral.vw_frota_historico_contabil`\n' +
+    '  WHERE dt_result BETWEEN @start_date AND @end_date\n' +
+    ')\n'
+  );
+}
+
+function categoriaByStatus_(status) {
+  for (var i = 0; i < CATEGORIAS.length; i++) {
+    if (CATEGORIAS[i].status === status) return CATEGORIAS[i];
+  }
+  return null;
+}
+
+function responsavelPorCategoriaName_(name) {
+  return INDISP_CATEGORIA_RESPONSAVEL[name] || INDISP_RESPONSAVEL_DEFAULT;
+}
+
+/** Query genérica "total x categorias" agrupada por uma dimensão qualquer (ou nenhuma).
+ * Inclui COUNT(DISTINCT vehicleId) — filtrar por veículos distintos, não só segundos, evita
+ * que um grupo com 1-2 carros presos em Sinistro o período inteiro pareça um padrão real. */
+function indispRateByDim_(cte, dimSql, baseParams) {
+  var selectDim = dimSql ? dimSql + ' AS dim, ' : '';
+  var groupBy = dimSql ? 'GROUP BY dim' : '';
+  var totals = runQuery_(
+    cte + 'SELECT ' + selectDim + 'SUM(segundos_no_status) AS total_seg, COUNT(DISTINCT vehicleId) AS n_veiculos FROM base ' + groupBy,
+    baseParams
+  );
+  var cats = runQuery_(
+    cte +
+      'SELECT ' + selectDim + 'SUM(segundos_no_status) AS seg_cat FROM base ' +
+      'WHERE status_ajustado IN (' + INDISP_STATUS_LIST_SQL + ') ' + groupBy,
+    baseParams
+  );
+  var catMap = {};
+  cats.forEach(function (r) { catMap[dimSql ? r.dim : '_'] = Number(r.seg_cat); });
+  return totals.map(function (r) {
+    var key = dimSql ? r.dim : '_';
+    var totalSeg = Number(r.total_seg) || 1;
+    var segCat = catMap[key] || 0;
+    return {
+      label: key, totalSeg: totalSeg, nVeiculos: Number(r.n_veiculos), segCat: segCat,
+      pct: round2_((100 * segCat) / totalSeg),
+    };
+  });
+}
+
+function getIndisponibilidadeOverview(startDate, endDate) {
+  var baseParams = [param_('start_date', 'DATE', startDate), param_('end_date', 'DATE', endDate)];
+  var cte = indispOverviewBaseCte_();
+
+  // Tendência semanal (mesma lógica de total/categorias do getIndisponibilidade oficial,
+  // só que por semana em vez de por mês).
+  var weeklyRows = runQuery_(
+    cte +
+      ', totals AS (\n' +
+      "  SELECT FORMAT_DATE('%G-W%V', dt_result) AS semana, SUM(segundos_no_status) AS total_seg\n" +
+      '  FROM base GROUP BY semana\n' +
+      '), cats AS (\n' +
+      "  SELECT FORMAT_DATE('%G-W%V', dt_result) AS semana, status_ajustado, SUM(segundos_no_status) AS seg_cat\n" +
+      '  FROM base WHERE status_ajustado IN (' + INDISP_STATUS_LIST_SQL + ')\n' +
+      '  GROUP BY semana, status_ajustado\n' +
+      ')\n' +
+      'SELECT t.semana, t.total_seg, c.status_ajustado, c.seg_cat\n' +
+      'FROM totals t LEFT JOIN cats c ON t.semana = c.semana\n' +
+      'ORDER BY t.semana',
+    baseParams
+  );
+
+  var totalSegByWeek = {};
+  var segCatByWeekCat = {}; // "semana|status" -> seg
+  var weeks = [];
+  weeklyRows.forEach(function (r) {
+    if (totalSegByWeek[r.semana] == null) { totalSegByWeek[r.semana] = Number(r.total_seg); weeks.push(r.semana); }
+    if (r.status_ajustado) segCatByWeekCat[r.semana + '|' + r.status_ajustado] = Number(r.seg_cat);
+  });
+
+  var weeklyBqDireto = weeks.map(function (w) {
+    var totalSeg = totalSegByWeek[w] || 1;
+    var somaCats = 0;
+    CATEGORIAS.forEach(function (c) { somaCats += segCatByWeekCat[w + '|' + c.status] || 0; });
+    return round2_((100 * somaCats) / totalSeg);
+  });
+
+  // Totais do período inteiro por categoria (soma das semanas) — base pra byCategory,
+  // byResponsavel e conversão em carros-dia. total_seg do período = soma do total_seg de
+  // cada semana (mesma lógica de "ytdTotalSegAll" do getIndisponibilidade oficial).
+  var totalSegPeriodo = weeks.reduce(function (acc, w) { return acc + (totalSegByWeek[w] || 0); }, 0) || 1;
+  var byCategory = CATEGORIAS.map(function (cat) {
+    var segCat = weeks.reduce(function (acc, w) { return acc + (segCatByWeekCat[w + '|' + cat.status] || 0); }, 0);
+    return {
+      name: cat.name,
+      color: cat.color,
+      segCat: segCat,
+      pct: round2_((100 * segCat) / totalSegPeriodo),
+      carrosDia: round2_(segCat / 86400),
+      responsavel: responsavelPorCategoriaName_(cat.name),
+    };
+  });
+
+  var responsavelMap = {};
+  byCategory.forEach(function (c) {
+    if (!responsavelMap[c.responsavel]) responsavelMap[c.responsavel] = { responsavel: c.responsavel, segCat: 0 };
+    responsavelMap[c.responsavel].segCat += c.segCat;
+  });
+  var byResponsavel = Object.keys(responsavelMap).map(function (k) {
+    var r = responsavelMap[k];
+    return { responsavel: r.responsavel, segCat: r.segCat, pct: round2_((100 * r.segCat) / totalSegPeriodo), carrosDia: round2_(r.segCat / 86400) };
+  }).sort(function (a, b) { return b.segCat - a.segCat; });
+
+  var bqDiretoPeriodo = round2_((100 * byCategory.reduce(function (s, c) { return s + c.segCat; }, 0)) / totalSegPeriodo);
+
+  // Pareto por sub-status dentro de cada categoria — usa vsd_substatus, já no mesmo grão
+  // (achado da investigação de schema, ver comentário no topo da seção).
+  var substatusRows = runQuery_(
+    cte +
+      "SELECT status_ajustado, COALESCE(vsd_substatus, '(sem substatus)') AS substatus, SUM(segundos_no_status) AS seg\n" +
+      'FROM base WHERE status_ajustado IN (' + INDISP_STATUS_LIST_SQL + ')\n' +
+      'GROUP BY status_ajustado, substatus ORDER BY status_ajustado, seg DESC',
+    baseParams
+  );
+  var substatusByCategory = {};
+  substatusRows.forEach(function (r) {
+    var cat = categoriaByStatus_(r.status_ajustado);
+    if (!cat) return;
+    if (!substatusByCategory[cat.name]) substatusByCategory[cat.name] = [];
+    var catTotal = byCategory.filter(function (c) { return c.name === cat.name; })[0];
+    var denom = (catTotal ? catTotal.segCat : 0) || 1;
+    substatusByCategory[cat.name].push({ label: r.substatus, seg: Number(r.seg), pct: round2_((100 * Number(r.seg)) / denom) });
+  });
+
+  var byModelRaw = indispRateByDim_(cte, 'vehiclemodel', baseParams)
+    .filter(function (r) { return r.nVeiculos >= INDISP_MIN_VEICULOS; })
+    .sort(function (a, b) { return b.pct - a.pct; })
+    .slice(0, 15);
+
+  var byVehicleCategoryRaw = indispRateByDim_(cte, 'vehicleCategory', baseParams)
+    .filter(function (r) { return r.nVeiculos >= INDISP_MIN_VEICULOS; })
+    .sort(function (a, b) { return b.pct - a.pct; });
+
+  var byAgeRaw = indispRateByDim_(
+    cte,
+    "CASE WHEN idade_carro IS NULL THEN 'sem dado' WHEN idade_carro < 90 THEN '0-89'" +
+      " WHEN idade_carro < 180 THEN '90-179' WHEN idade_carro < 365 THEN '180-364'" +
+      " WHEN idade_carro < 730 THEN '365-729' ELSE '730+' END",
+    baseParams
+  );
+  var ageOrder = { '0-89': 1, '90-179': 2, '180-364': 3, '365-729': 4, '730+': 5, 'sem dado': 6 };
+  byAgeRaw.sort(function (a, b) { return (ageOrder[a.label] || 9) - (ageOrder[b.label] || 9); });
+
+  var byPodRaw = indispRateByDim_(cte, "CONCAT(COALESCE(podCity,'—'), ' · ', COALESCE(podName,'—'))", baseParams)
+    .filter(function (r) { return r.nVeiculos >= INDISP_MIN_VEICULOS; })
+    .sort(function (a, b) { return b.pct - a.pct; });
+
+  return {
+    start_date: startDate,
+    end_date: endDate,
+    baseline: { bqDireto: bqDiretoPeriodo, totalSegPeriodo: totalSegPeriodo },
+    weekly: { labels: weeks, bqDireto: weeklyBqDireto },
+    byCategory: byCategory,
+    byResponsavel: byResponsavel,
+    substatusByCategory: substatusByCategory,
+    byModel: byModelRaw,
+    byVehicleCategory: byVehicleCategoryRaw,
+    byAge: byAgeRaw,
+    podRanking: { worst: byPodRaw.slice(0, 8), best: byPodRaw.slice(-6).reverse() },
+  };
 }
 
 /* -------------------------------------------------------------------------- */
@@ -701,6 +914,7 @@ function testeManual() {
   var range = defaultRange_(null, null);
   Logger.log('Indisponibilidade nacional: %s', JSON.stringify(getIndisponibilidade(range.start, range.end, null)));
   Logger.log('Indisponibilidade Campinas: %s', JSON.stringify(getIndisponibilidade(range.start, range.end, 'Campinas')));
+  Logger.log('Indisponibilidade Visão Geral: %s', JSON.stringify(getIndisponibilidadeOverview(range.start, range.end)));
   Logger.log('Claim/APV nacional: %s', JSON.stringify(getClaimApv(range.start, range.end, null)));
   Logger.log('Claim/APV Campinas: %s', JSON.stringify(getClaimApv(range.start, range.end, 'Campinas')));
   Logger.log('Claim detail damage: %s', JSON.stringify(getClaimDetail(range.start, range.end, null, 'damage')));

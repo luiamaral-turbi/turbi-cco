@@ -190,6 +190,14 @@
         </a>
       </li>
       <li class="nav-group">
+        <a href="#indisponibilidade/overview" class="nav-item" data-route="indisponibilidade/overview" data-tip="Indisponibilidade">
+          <span class="nav-icon">🅿️</span><span class="nav-label">Indisponibilidade</span>
+        </a>
+        <ul class="nav-sublist">
+          <li><a href="#indisponibilidade/overview" class="nav-subitem" data-route="indisponibilidade/overview">Visão Geral</a></li>
+        </ul>
+      </li>
+      <li class="nav-group">
         <a href="#apv/overview" class="nav-item" data-route="apv/overview" data-tip="APV">
           <span class="nav-icon">🛠️</span><span class="nav-label">APV</span>
         </a>
@@ -314,6 +322,56 @@
 </div>
 
 </div>
+    </section>
+
+    <!-- ============================================================ INDISPONIBILIDADE — VISÃO GERAL (investigação, 100% aditiva) ============================================================ -->
+    <section class="page" id="page-indisponibilidade-overview" data-page="indisponibilidade/overview" hidden>
+    <div class="wrap" id="content-area-indisp-overview">
+
+    <div class="sec-head sec-indisp"><span class="sec-num">🔍</span><h2 class="sec-title">Indisponibilidade — Visão Geral</h2></div>
+    <p class="sec-owner">Investigação aditiva sobre as mesmas 12 categorias já certificadas da aba RMR — por responsável, modelo, categoria de veículo, idade da frota, POD físico e sub-motivo. Nunca altera <code>getIndisponibilidade()</code>; os números da aba RMR continuam batendo exatamente igual.</p>
+
+    <div class="subhead">Período <span class="sub-note">controla toda a análise desta página</span></div>
+    <div class="card filter-row">
+      <label>De: <select id="indisp-overview-start" onchange="loadIndispOverview()"></select></label>
+      <label>Até: <select id="indisp-overview-end" onchange="loadIndispOverview()"></select></label>
+    </div>
+
+    <div class="hero-row" id="indisp-overview-heroes">
+      <div class="hero-card"><div class="hero-eye">Carregando…</div><div class="hero-num">—</div></div>
+    </div>
+
+    <div class="subhead">Tendência semanal <span class="sub-note">Cálculo BQ direto — mesma fórmula da aba RMR, só que semana a semana em vez de mês a mês</span></div>
+    <div class="card"><div id="c-indispOverviewTrend"></div></div>
+
+    <div class="subhead">Por categoria <span class="sub-note">mesmas 12 categorias da aba RMR, com responsável e conversão em carros-dia perdidos</span></div>
+    <div class="card"><div class="tbl-wrap"><table><thead><tr><th>Categoria</th><th>Responsável</th><th class="num">%</th><th class="num">Carros-dia</th></tr></thead><tbody id="tbl-indisp-overview-category"></tbody></table></div></div>
+
+    <div class="subhead">Por responsável <span class="sub-note">soma das categorias sob cada um — ver <a href="https://github.com/luiamaral-turbi/turbi-cco" target="_blank" rel="noopener">Code.gs</a> pra ajustar o mapeamento se a estrutura mudar</span></div>
+    <div class="card"><div class="tbl-wrap"><table><thead><tr><th>Responsável</th><th class="num">%</th><th class="num">Carros-dia</th></tr></thead><tbody id="tbl-indisp-overview-responsavel"></tbody></table></div></div>
+
+    <div class="subhead">Sub-motivo dentro da categoria <span class="sub-note">detalhe de status×substatus só daquela categoria</span></div>
+    <div class="card filter-row" style="margin-bottom:14px">
+      <label>Categoria: <select id="indisp-overview-category-select" onchange="renderIndispOverviewSubstatus()"></select></label>
+    </div>
+    <div class="card"><div id="c-indispOverviewSubstatus"></div></div>
+
+    <div class="subhead">Por categoria e modelo de veículo <span class="sub-note">mínimo 5 veículos distintos no período — evita ranking com 1-2 carros presos o tempo todo</span></div>
+    <div class="grid-lines">
+      <div class="card"><div class="card-title">Por categoria de veículo</div><div class="tbl-wrap"><table><thead><tr><th>Categoria</th><th class="num">Veículos</th><th class="num">Taxa</th></tr></thead><tbody id="tbl-indisp-overview-vehiclecategory"></tbody></table></div></div>
+      <div class="card"><div class="card-title">Top modelos por taxa</div><div class="tbl-wrap"><table><thead><tr><th>Modelo</th><th class="num">Veículos</th><th class="num">Taxa</th></tr></thead><tbody id="tbl-indisp-overview-model"></tbody></table></div></div>
+    </div>
+
+    <div class="subhead">Por idade da frota <span class="sub-note">mesma faixa usada na análise de APV, pra comparar direto</span></div>
+    <div class="card"><div id="c-indispOverviewAge"></div></div>
+
+    <div class="subhead">Ranking de POD físico <span class="sub-note">taxa por veículo (não contagem bruta), mínimo 5 veículos distintos por POD</span></div>
+    <div class="grid-lines">
+      <div class="card"><div class="card-title">Piores taxas</div><div class="tbl-wrap"><table><thead><tr><th>POD</th><th class="num">Veículos</th><th class="num">Taxa</th></tr></thead><tbody id="tbl-indisp-overview-pod-worst"></tbody></table></div></div>
+      <div class="card"><div class="card-title">Melhores taxas</div><div class="tbl-wrap"><table><thead><tr><th>POD</th><th class="num">Veículos</th><th class="num">Taxa</th></tr></thead><tbody id="tbl-indisp-overview-pod-best"></tbody></table></div></div>
+    </div>
+
+    </div>
     </section>
 
     <!-- ============================================================ APV — VISÃO GERAL (investigação) ============================================================ -->
@@ -515,6 +573,15 @@ async function fetchClaimDetail(component, startDate, endDate, city){
   if (!res.ok) throw new Error(`claim-detail (${component}): HTTP ${res.status}`);
   const data = await res.json();
   if (data && data.detail) throw new Error(`claim-detail (${component}): ${data.detail}`);
+  return data;
+}
+
+async function fetchIndispOverview(startDate, endDate){
+  const params = new URLSearchParams({ endpoint: 'indisponibilidade-overview', start_date: startDate, end_date: endDate });
+  const res = await fetch(`${APPS_SCRIPT_URL}?${params.toString()}`);
+  if (!res.ok) throw new Error(`indisponibilidade-overview: HTTP ${res.status}`);
+  const data = await res.json();
+  if (data && data.detail) throw new Error(`indisponibilidade-overview: ${data.detail}`);
   return data;
 }
 
@@ -1089,6 +1156,100 @@ async function atualizarDadosRmr(){
 }
 
 /* ============================================================================ */
+/* Indisponibilidade — Visão Geral: investigação viva, 100% aditiva              */
+/* (nunca chama/renderiza nada de renderIndisponibilidade — página separada)     */
+/* ============================================================================ */
+
+let indispOverviewMonthsPopulated = false;
+let indispOverviewData = null; // guardado pra repopular o Pareto de sub-status sem refetch
+
+function populateIndispOverviewMonthSelects(){
+  if (indispOverviewMonthsPopulated) return;
+  const months = ymRange('2026-01');
+  const startSel = document.getElementById('indisp-overview-start');
+  const endSel = document.getElementById('indisp-overview-end');
+  const opt = ym => `<option value="${ym}">${mesLabel(ym)}/${ym.slice(0,4)}</option>`;
+  startSel.innerHTML = months.map(opt).join('');
+  endSel.innerHTML = months.map(opt).join('');
+  startSel.value = months[0];
+  endSel.value = months[months.length-1];
+  indispOverviewMonthsPopulated = true;
+}
+
+async function loadIndispOverview(){
+  const startYm = document.getElementById('indisp-overview-start').value;
+  const endYm = document.getElementById('indisp-overview-end').value;
+  const startDate = `${startYm}-01`;
+  const endDate = lastDayOfMonth(endYm);
+  indispOverviewData = await fetchIndispOverview(startDate, endDate);
+  renderIndispOverview(indispOverviewData);
+}
+
+function indispRateRowsHtml(rows, labelKey){
+  return rows.map(r =>
+    `<tr><td>${r[labelKey]}</td><td class="num">${r.nVeiculos}</td><td class="num">${r.pct.toFixed(2)}%</td></tr>`
+  ).join('');
+}
+
+function renderIndispOverviewSubstatus(){
+  if (!indispOverviewData) return;
+  const catName = document.getElementById('indisp-overview-category-select').value;
+  const rows = (indispOverviewData.substatusByCategory && indispOverviewData.substatusByCategory[catName]) || [];
+  paretoChart('c-indispOverviewSubstatus', {
+    labels: rows.map(r => r.label), values: rows.map(r => Math.round(r.seg / 86400)), height: 220,
+  });
+}
+
+function renderIndispOverview(data){
+  const b = data.baseline;
+  const totalCarrosDia = round2(b.totalSegPeriodo > 0 ? data.byCategory.reduce((s,c)=>s+c.carrosDia,0) : 0);
+  const topCategoria = data.byCategory.slice().sort((a,b)=>b.carrosDia-a.carrosDia)[0];
+  document.getElementById('indisp-overview-heroes').innerHTML = `
+    <div class="hero-card"><div class="hero-eye">Cálculo BQ direto</div><div class="hero-num">${b.bqDireto.toFixed(2)}%</div></div>
+    <div class="hero-card"><div class="hero-eye">Carros-dia perdidos no período</div><div class="hero-num">${totalCarrosDia.toLocaleString('pt-BR')}</div></div>
+    <div class="hero-card"><div class="hero-eye">Maior categoria (carros-dia)</div><div class="hero-num">${topCategoria ? topCategoria.name : '—'}</div><div class="hero-sub">${topCategoria ? topCategoria.carrosDia.toLocaleString('pt-BR')+' carros-dia · '+topCategoria.responsavel : ''}</div></div>
+  `;
+
+  trendLineChart('c-indispOverviewTrend', {
+    labels: data.weekly.labels,
+    series: [{ name: 'Indisponibilidade', color: 'var(--standard)', values: data.weekly.bqDireto }],
+    height: 190,
+  });
+
+  document.getElementById('tbl-indisp-overview-category').innerHTML = data.byCategory
+    .slice().sort((a,b)=>b.carrosDia-a.carrosDia)
+    .map(c => `<tr><td><span class="legend-sw" style="background:${c.color};display:inline-block;margin-right:6px"></span>${c.name}</td><td>${c.responsavel}</td><td class="num">${c.pct.toFixed(2)}%</td><td class="num">${c.carrosDia.toLocaleString('pt-BR')}</td></tr>`)
+    .join('');
+
+  document.getElementById('tbl-indisp-overview-responsavel').innerHTML = data.byResponsavel
+    .map(r => `<tr><td>${r.responsavel}</td><td class="num">${r.pct.toFixed(2)}%</td><td class="num">${r.carrosDia.toLocaleString('pt-BR')}</td></tr>`)
+    .join('');
+
+  const catSelect = document.getElementById('indisp-overview-category-select');
+  const catNames = data.byCategory.map(c => c.name);
+  catSelect.innerHTML = catNames.map(n => `<option value="${n}">${n}</option>`).join('');
+  catSelect.value = topCategoria ? topCategoria.name : catNames[0];
+  renderIndispOverviewSubstatus();
+
+  document.getElementById('tbl-indisp-overview-vehiclecategory').innerHTML = indispRateRowsHtml(data.byVehicleCategory, 'label');
+  document.getElementById('tbl-indisp-overview-model').innerHTML = indispRateRowsHtml(data.byModel, 'label');
+
+  groupedBarChart('c-indispOverviewAge', {
+    labels: data.byAge.map(r => r.label),
+    series: [{ name: 'Taxa de indisponibilidade', color: 'var(--standard)', values: data.byAge.map(r => r.pct) }],
+    height: 190,
+  });
+
+  document.getElementById('tbl-indisp-overview-pod-worst').innerHTML = indispRateRowsHtml(data.podRanking.worst, 'label');
+  document.getElementById('tbl-indisp-overview-pod-best').innerHTML = indispRateRowsHtml(data.podRanking.best, 'label');
+}
+
+async function atualizarIndispOverview(){
+  populateIndispOverviewMonthSelects();
+  await loadIndispOverview();
+}
+
+/* ============================================================================ */
 /* APV — drill-down por componente (Damage/Wash/POD): Pareto 2 níveis + nuvem   */
 /* de palavras + cross-filter. Mesmo padrão pros 3, parametrizado por           */
 /* `component` — ver CLAIM_DETAIL_COMPONENTS em apps-script/Code.gs.            */
@@ -1318,6 +1479,7 @@ async function atualizarApvOverview(){
 
 const ROUTES = {
   'rmr': { pageId: 'page-rmr', title: 'RMR - Painel ao vivo', navSelector: '[data-route="rmr"]', load: atualizarDadosRmr },
+  'indisponibilidade/overview': { pageId: 'page-indisponibilidade-overview', title: 'Indisponibilidade — Visão Geral', navSelector: '[data-route="indisponibilidade/overview"]', load: atualizarIndispOverview },
   'apv/overview': { pageId: 'page-apv-overview', title: 'APV — Visão Geral', navSelector: '[data-route="apv/overview"]', load: atualizarApvOverview },
   'apv/damage': { pageId: 'page-apv-damage', title: 'APV — Damage', navSelector: '[data-route="apv/damage"]', load: () => atualizarApvComponent('damage') },
   'apv/wash': { pageId: 'page-apv-wash', title: 'APV — Wash', navSelector: '[data-route="apv/wash"]', load: () => atualizarApvComponent('wash') },

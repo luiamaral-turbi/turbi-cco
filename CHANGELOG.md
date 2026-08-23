@@ -4,6 +4,33 @@ Formato: data + o que mudou e por quê. Foco em decisões de arquitetura e fórm
 substituto do histórico de commits do Git, é um resumo pensado pra quem for dar manutenção sem
 querer ler o diff inteiro.
 
+## 2026-08-23 (2) — Indisponibilidade → Visão Geral (100% aditiva, guardrail testado)
+
+- **Adicionado**: página **Indisponibilidade → Visão Geral** (menu lateral, agora antes de APV),
+  novo endpoint `?endpoint=indisponibilidade-overview` no `Code.gs` — CTE, lista de categorias e
+  SQL totalmente separados de `getIndisponibilidade()`, que **não foi tocado**.
+- **Guardrail validado ao vivo, não só prometido**: recalculei o "Cálculo BQ direto" de forma
+  independente (somando por semana em vez de direto no período inteiro) e bateu exatamente igual
+  ao valor da fórmula oficial (11,6% em ambos, mesmo range de datas) — prova de que a réplica da
+  lógica total/categorias está correta antes de expor a página.
+- **Achado de schema que resolveu uma pergunta em aberto**: `vsd_status`/`vsd_substatus`, na MESMA
+  view já usada pela Indisponibilidade oficial, já dão a granularidade STATUS×SUBSTATUS que o
+  projeto CCO usa separadamente (`ops_geral.tb_indicadores_regiao`) — não precisou reconciliar com
+  outra fonte, nem pedir confirmação, o dado já estava disponível no mesmo grão de linha.
+- `bu_responsavel` (campo que existe na view) foi checado e **não é** o mapeamento
+  Fabio/Lucas-Ricardo — só separa frota RAC de Seminovos (99,5% do volume é RAC). Mantido o
+  mapeamento manual por categoria, implementado como tabela pequena (`INDISP_CATEGORIA_RESPONSAVEL`,
+  2 entradas) + 1 valor default — trocar responsável é editar 1-2 linhas.
+- **Bug de amostra pequena corrigido antes de publicar**: o corte por segundos totais (30 dias)
+  deixava passar modelos com 1-2 veículos presos em Sinistro o período inteiro (ex.: "Renegade",
+  1 carro, 100% indisponível — ruído, não achado). Trocado por `COUNT(DISTINCT vehicleId) >= 5`,
+  validado ao vivo (ranking de modelo ficou limpo, "New HB20" no topo com 533 veículos e 17,6%).
+- Novo campo em cada categoria: **carros-dia perdidos** (`segCat/86400`) — converte segundos de
+  indisponibilidade em algo que dá pra comparar direto com capacidade de frota, sem inventar uma
+  taxa de R$/diária que não tínhamos à mão.
+- Cross-check interessante: "New HB20" aparece no topo tanto do ranking de Damage (Claim/APV)
+  quanto no de taxa de Indisponibilidade — duas análises independentes convergindo no mesmo modelo.
+
 ## 2026-08-23 — APV → Visão Geral: investigação viva cruzando Damage/Wash/POD
 
 - **Adicionado**: página **APV → Visão Geral** (nova entrada de menu, antes de Damage/Wash/POD),

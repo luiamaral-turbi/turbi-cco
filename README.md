@@ -5,6 +5,12 @@ Painel ao vivo de Operações da Turbi. Site estático, sem backend próprio, se
 
 - **RMR** — os 3 indicadores centrais da Reunião Mensal de Resultados: **COGS (OPEX)**,
   **Indisponibilidade OPS** e **Claim/APV** (reclamação pós-viagem).
+- **Indisponibilidade → Visão Geral** — investigação aditiva sobre as mesmas 12 categorias já
+  certificadas da aba RMR: por responsável (Fabio Carvalho / Lucas Lopes + Ricardo Marguliano —
+  tabela pequena editável em `INDISP_CATEGORIA_RESPONSAVEL`, `apps-script/Code.gs`), por modelo e
+  categoria de veículo, por idade da frota, por POD físico, e Pareto de sub-motivo
+  (`vsd_status`/`vsd_substatus`, mesma view). Nunca chama nem altera `getIndisponibilidade()` —
+  endpoint `?endpoint=indisponibilidade-overview`, separado, live.
 - **APV → Visão Geral** — investigação cruzando Damage/Wash/POD: tendência semanal, idade do
   carro, dias desde lavagem, categoria/modelo de veículo, produto, impacto na nota, ranking de POD
   físico e quebra do bucket "Other". Endpoint `?endpoint=claim-overview`, live (recalcula por
