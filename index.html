@@ -4,6 +4,9 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>RMR - Painel ao vivo</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=IBM+Plex+Mono:wght@500;600&display=swap" rel="stylesheet">
 <style>
   :root {
     --bg: #FFFFED;
@@ -29,6 +32,8 @@
     --chart-axis: #C9C6AE;
     --chart-lbl: #7A7861;
     --meta-line: #6E6F73;
+    --warn: #9A6B00;
+    --warn-soft: #FBF0DA;
   }
   * { box-sizing: border-box; }
   html { color-scheme: light; }
@@ -158,6 +163,26 @@
   #apv-damage-clear-filter:hover { background:var(--surface-2); }
   .callout-box { border:1px dashed var(--teal); background:var(--teal-soft); border-radius:10px; padding:14px 18px; font-size:13px; color:var(--ink); }
   .callout-box b { color:var(--teal); }
+  .callout-box.warn { border-color:var(--warn); background:var(--warn-soft); }
+  .callout-box.warn b { color:var(--warn); }
+
+  /* ==================== Visão Geral editorial: achado em destaque, narrativa por seção, ação priorizada ==================== */
+  .ov-finding-hero { background:var(--navy); color:var(--navy-ink); border-radius:14px; padding:22px 26px; margin-bottom:22px; }
+  .ov-finding-hero .lbl { font-size:11px; font-weight:700; letter-spacing:.1em; text-transform:uppercase; opacity:.65; margin-bottom:8px; }
+  .ov-finding-hero .headline { font-family:"Fraunces",Georgia,serif; font-size:22px; font-weight:600; line-height:1.35; text-wrap:balance; }
+  .ov-finding-hero .headline b { font-weight:700; }
+  .ov-section { margin:34px 0; }
+  .ov-section-eyebrow { font-size:10.5px; font-weight:700; letter-spacing:.1em; text-transform:uppercase; color:var(--purple); margin-bottom:5px; }
+  .ov-section h3.ov-title { font-family:"Fraunces",Georgia,serif; font-size:19px; font-weight:600; margin:0 0 6px; text-wrap:balance; }
+  .ov-finding-line { font-size:13px; color:var(--muted); margin:0 0 14px; max-width:70ch; }
+  .ov-finding-line b { color:var(--ink); }
+  .mono-num { font-family:"IBM Plex Mono",monospace; }
+  .ov-action-list .action-row { display:flex; gap:14px; align-items:flex-start; padding:14px 0; border-bottom:1px solid var(--line); }
+  .ov-action-list .action-row:last-child { border-bottom:none; }
+  .ov-prio-badge { font-family:"Fraunces",serif; font-weight:700; font-size:15px; width:26px; height:26px; border-radius:50%; display:flex; align-items:center; justify-content:center; flex:none; background:var(--purple-soft); color:var(--purple); }
+  .ov-action-list .action-row:nth-child(1) .ov-prio-badge, .ov-action-list .action-row:nth-child(2) .ov-prio-badge { background:var(--critical-soft); color:var(--critical); }
+  .ov-action-row-body h4 { margin:0 0 3px; font-size:14px; font-weight:700; }
+  .ov-action-row-body p { margin:0; font-size:12.5px; color:var(--muted); }
 </style>
 </head>
 <body>
@@ -329,46 +354,83 @@
     <div class="wrap" id="content-area-indisp-overview">
 
     <div class="sec-head sec-indisp"><span class="sec-num">🔍</span><h2 class="sec-title">Indisponibilidade — Visão Geral</h2></div>
-    <p class="sec-owner">Investigação aditiva sobre as mesmas 12 categorias já certificadas da aba RMR — por responsável, modelo, categoria de veículo, idade da frota, POD físico e sub-motivo. Nunca altera <code>getIndisponibilidade()</code>; os números da aba RMR continuam batendo exatamente igual.</p>
+    <p class="sec-owner">Investigação aditiva sobre as mesmas 12 categorias já certificadas da aba RMR. Nunca altera <code>getIndisponibilidade()</code> — os números da aba RMR continuam batendo exatamente igual.</p>
 
-    <div class="subhead">Período <span class="sub-note">controla toda a análise desta página</span></div>
-    <div class="card filter-row">
-      <label>De: <select id="indisp-overview-start" onchange="loadIndispOverview()"></select></label>
+    <div class="card filter-row" style="margin-bottom:20px">
+      <label>Período — De: <select id="indisp-overview-start" onchange="loadIndispOverview()"></select></label>
       <label>Até: <select id="indisp-overview-end" onchange="loadIndispOverview()"></select></label>
     </div>
 
-    <div class="hero-row" id="indisp-overview-heroes">
-      <div class="hero-card"><div class="hero-eye">Carregando…</div><div class="hero-num">—</div></div>
+    <div class="ov-finding-hero" id="indisp-ov-hero"><div class="lbl">Carregando…</div><div class="headline">—</div></div>
+
+    <div class="hero-row" id="indisp-overview-heroes"></div>
+
+    <div class="ov-section">
+      <div class="ov-section-eyebrow">Panorama</div>
+      <h3 class="ov-title">Tendência semanal</h3>
+      <p class="ov-finding-line" id="indisp-ov-trend-finding"></p>
+      <div class="card"><div id="c-indispOverviewTrend"></div></div>
     </div>
 
-    <div class="subhead">Tendência semanal <span class="sub-note">Cálculo BQ direto — mesma fórmula da aba RMR, só que semana a semana em vez de mês a mês</span></div>
-    <div class="card"><div id="c-indispOverviewTrend"></div></div>
-
-    <div class="subhead">Por categoria <span class="sub-note">mesmas 12 categorias da aba RMR, com responsável e conversão em carros-dia perdidos</span></div>
-    <div class="card"><div class="tbl-wrap"><table><thead><tr><th>Categoria</th><th>Responsável</th><th class="num">%</th><th class="num">Carros-dia</th></tr></thead><tbody id="tbl-indisp-overview-category"></tbody></table></div></div>
-
-    <div class="subhead">Por responsável <span class="sub-note">soma das categorias sob cada um — ver <a href="https://github.com/luiamaral-turbi/turbi-cco" target="_blank" rel="noopener">Code.gs</a> pra ajustar o mapeamento se a estrutura mudar</span></div>
-    <div class="card"><div class="tbl-wrap"><table><thead><tr><th>Responsável</th><th class="num">%</th><th class="num">Carros-dia</th></tr></thead><tbody id="tbl-indisp-overview-responsavel"></tbody></table></div></div>
-
-    <div class="subhead">Sub-motivo dentro da categoria <span class="sub-note">detalhe de status×substatus só daquela categoria</span></div>
-    <div class="card filter-row" style="margin-bottom:14px">
-      <label>Categoria: <select id="indisp-overview-category-select" onchange="renderIndispOverviewSubstatus()"></select></label>
-    </div>
-    <div class="card"><div id="c-indispOverviewSubstatus"></div></div>
-
-    <div class="subhead">Por categoria e modelo de veículo <span class="sub-note">mínimo 5 veículos distintos no período — evita ranking com 1-2 carros presos o tempo todo</span></div>
-    <div class="grid-lines">
-      <div class="card"><div class="card-title">Por categoria de veículo</div><div class="tbl-wrap"><table><thead><tr><th>Categoria</th><th class="num">Veículos</th><th class="num">Taxa</th></tr></thead><tbody id="tbl-indisp-overview-vehiclecategory"></tbody></table></div></div>
-      <div class="card"><div class="card-title">Top modelos por taxa</div><div class="tbl-wrap"><table><thead><tr><th>Modelo</th><th class="num">Veículos</th><th class="num">Taxa</th></tr></thead><tbody id="tbl-indisp-overview-model"></tbody></table></div></div>
+    <div class="ov-section">
+      <div class="ov-section-eyebrow">Achado 1</div>
+      <h3 class="ov-title">Onde a frota parada está concentrada</h3>
+      <p class="ov-finding-line" id="indisp-ov-category-finding"></p>
+      <div class="card"><div class="tbl-wrap"><table><thead><tr><th>Categoria</th><th>Responsável</th><th class="num">%</th><th class="num">Carros-dia</th></tr></thead><tbody id="tbl-indisp-overview-category"></tbody></table></div></div>
     </div>
 
-    <div class="subhead">Por idade da frota <span class="sub-note">mesma faixa usada na análise de APV, pra comparar direto</span></div>
-    <div class="card"><div id="c-indispOverviewAge"></div></div>
+    <div class="ov-section">
+      <div class="ov-section-eyebrow">Achado 2</div>
+      <h3 class="ov-title">Quem responde pela indisponibilidade</h3>
+      <p class="ov-finding-line" id="indisp-ov-responsavel-finding"></p>
+      <div class="card"><div class="tbl-wrap"><table><thead><tr><th>Responsável</th><th class="num">%</th><th class="num">Carros-dia</th></tr></thead><tbody id="tbl-indisp-overview-responsavel"></tbody></table></div>
+        <p class="finding" style="margin:12px 0 0;font-size:11.5px">Mapeamento em <code>INDISP_CATEGORIA_RESPONSAVEL</code>, <code>apps-script/Code.gs</code> — editar lá se a estrutura mudar.</p>
+      </div>
+    </div>
 
-    <div class="subhead">Ranking de POD físico <span class="sub-note">taxa por veículo (não contagem bruta), mínimo 5 veículos distintos por POD</span></div>
-    <div class="grid-lines">
-      <div class="card"><div class="card-title">Piores taxas</div><div class="tbl-wrap"><table><thead><tr><th>POD</th><th class="num">Veículos</th><th class="num">Taxa</th></tr></thead><tbody id="tbl-indisp-overview-pod-worst"></tbody></table></div></div>
-      <div class="card"><div class="card-title">Melhores taxas</div><div class="tbl-wrap"><table><thead><tr><th>POD</th><th class="num">Veículos</th><th class="num">Taxa</th></tr></thead><tbody id="tbl-indisp-overview-pod-best"></tbody></table></div></div>
+    <div class="ov-section">
+      <div class="ov-section-eyebrow">Achado 3</div>
+      <h3 class="ov-title">Modelo e idade do carro concentram o risco</h3>
+      <p class="ov-finding-line" id="indisp-ov-model-finding"></p>
+      <div class="grid-lines">
+        <div class="card"><div class="card-title">Top modelos por taxa <span class="sub-note">mín. 5 veículos</span></div><div class="tbl-wrap"><table><thead><tr><th>Modelo</th><th class="num">Veículos</th><th class="num">Taxa</th></tr></thead><tbody id="tbl-indisp-overview-model"></tbody></table></div></div>
+        <div class="card"><div class="card-title">Por categoria de veículo</div><div class="tbl-wrap"><table><thead><tr><th>Categoria</th><th class="num">Veículos</th><th class="num">Taxa</th></tr></thead><tbody id="tbl-indisp-overview-vehiclecategory"></tbody></table></div></div>
+      </div>
+      <p class="ov-finding-line" id="indisp-ov-age-finding" style="margin-top:16px"></p>
+      <div class="card"><div id="c-indispOverviewAge"></div></div>
+    </div>
+
+    <div class="ov-section">
+      <div class="ov-section-eyebrow">Achado 4</div>
+      <h3 class="ov-title">Ranking de POD físico</h3>
+      <p class="ov-finding-line" id="indisp-ov-pod-finding"></p>
+      <div class="grid-lines">
+        <div class="card"><div class="card-title">Piores taxas</div><div class="tbl-wrap"><table><thead><tr><th>POD</th><th class="num">Veículos</th><th class="num">Taxa</th></tr></thead><tbody id="tbl-indisp-overview-pod-worst"></tbody></table></div></div>
+        <div class="card"><div class="card-title">Melhores taxas</div><div class="tbl-wrap"><table><thead><tr><th>POD</th><th class="num">Veículos</th><th class="num">Taxa</th></tr></thead><tbody id="tbl-indisp-overview-pod-best"></tbody></table></div></div>
+      </div>
+    </div>
+
+    <div class="ov-section">
+      <div class="ov-section-eyebrow">Detalhe</div>
+      <h3 class="ov-title">Sub-motivo dentro de uma categoria</h3>
+      <p class="ov-finding-line">Escolha uma categoria pra abrir o status×substatus por trás dela (campo já existente na mesma view, mesmo grão — não precisou de outra fonte).</p>
+      <div class="card filter-row" style="margin-bottom:14px">
+        <label>Categoria: <select id="indisp-overview-category-select" onchange="renderIndispOverviewSubstatus()"></select></label>
+      </div>
+      <div class="card"><div id="c-indispOverviewSubstatus"></div></div>
+    </div>
+
+    <div class="callout-box warn" style="margin:28px 0">
+      <b>⚠️ Correlação, não causa provada.</b> Taxas mais altas em certos modelos/idades/PODs indicam
+      onde investigar primeiro, não confirmam a causa raiz sozinhas — cruzar com histórico de
+      manutenção antes de agir.
+    </div>
+
+    <div class="ov-section">
+      <div class="ov-section-eyebrow">Priorização</div>
+      <h3 class="ov-title">Por onde começar</h3>
+      <p class="ov-finding-line">Ordenado por carros-dia de oportunidade — para modelo/POD/idade, a diferença entre a taxa do segmento e a taxa geral, convertida no volume real daquele segmento.</p>
+      <div class="card" style="padding:4px 22px"><div class="ov-action-list" id="indisp-ov-actions"></div></div>
     </div>
 
     </div>
@@ -379,50 +441,87 @@
     <div class="wrap" id="content-area-apv-overview">
 
     <div class="sec-head sec-claim"><span class="sec-num">🔍</span><h2 class="sec-title">APV — Visão Geral</h2></div>
-    <p class="sec-owner">Investigação cruzando Damage, Wash e POD — estratificação por idade do carro, modelo, produto, nota e local físico, com achados e priorização de ação. Recalcula ao clicar em "Atualizar dados" ou trocar o período.</p>
+    <p class="sec-owner">Investigação cruzando Damage, Wash e POD — mesmo grão de reserva distinta da fórmula oficial. Recalcula ao trocar o período.</p>
 
-    <div class="subhead">Período <span class="sub-note">controla toda a análise desta página</span></div>
-    <div class="card filter-row">
-      <label>De: <select id="apv-overview-start" onchange="loadApvOverview()"></select></label>
+    <div class="card filter-row" style="margin-bottom:20px">
+      <label>Período — De: <select id="apv-overview-start" onchange="loadApvOverview()"></select></label>
       <label>Até: <select id="apv-overview-end" onchange="loadApvOverview()"></select></label>
     </div>
 
-    <div class="hero-row" id="apv-overview-heroes">
-      <div class="hero-card c-claim"><div class="hero-eye">Carregando…</div><div class="hero-num">—</div></div>
+    <div class="ov-finding-hero" id="apv-ov-hero"><div class="lbl">Carregando…</div><div class="headline">—</div></div>
+
+    <div class="hero-row" id="apv-overview-heroes"></div>
+
+    <div class="ov-section">
+      <div class="ov-section-eyebrow">Panorama</div>
+      <h3 class="ov-title">Tendência semanal</h3>
+      <p class="ov-finding-line" id="apv-ov-trend-finding"></p>
+      <div class="card"><div id="c-apvOverviewTrend"></div></div>
     </div>
 
-    <div class="subhead">Tendência semanal <span class="sub-note">Damage e Wash — se estiver caindo ao longo do período, é sinal de melhora real, não ruído</span></div>
-    <div class="card"><div id="c-apvOverviewTrend"></div></div>
-
-    <div class="subhead">Por idade do carro <span class="sub-note">geralmente o fator mais forte — gradiente monotônico é sinal de causa real, não coincidência</span></div>
-    <div class="card"><div id="c-apvOverviewAge"></div><div class="legend-row" id="c-apvOverviewAge-legend"></div></div>
-
-    <div class="subhead">Por dias desde a última lavagem <span class="sub-note">Wash sobe com o tempo — Damage também, efeito colateral de carro rodando mais desgastado</span></div>
-    <div class="card"><div id="c-apvOverviewWashDays"></div><div class="legend-row" id="c-apvOverviewWashDays-legend"></div></div>
-
-    <div class="subhead">Por categoria e modelo de veículo <span class="sub-note">mínimo de reservas aplicado — categoria ≥30, modelo ≥50 (top 15 por Damage)</span></div>
-    <div class="grid-lines">
-      <div class="card"><div class="card-title">Por categoria</div><div class="tbl-wrap"><table><thead><tr><th>Categoria</th><th class="num">N</th><th class="num">Damage</th><th class="num">Wash</th><th class="num">POD</th></tr></thead><tbody id="tbl-apv-overview-category"></tbody></table></div></div>
-      <div class="card"><div class="card-title">Top modelos por Damage</div><div class="tbl-wrap"><table><thead><tr><th>Modelo</th><th class="num">N</th><th class="num">Damage</th><th class="num">Wash</th><th class="num">POD</th></tr></thead><tbody id="tbl-apv-overview-model"></tbody></table></div></div>
+    <div class="ov-section">
+      <div class="ov-section-eyebrow">Achado 1</div>
+      <h3 class="ov-title">Idade do carro</h3>
+      <p class="ov-finding-line" id="apv-ov-age-finding"></p>
+      <div class="card"><div id="c-apvOverviewAge"></div><div class="legend-row" id="c-apvOverviewAge-legend"></div></div>
     </div>
 
-    <div class="subhead">Por produto/tipo de reserva <span class="sub-note">mínimo 20 reservas, top 20 por volume</span></div>
-    <div class="card"><div class="tbl-wrap"><table><thead><tr><th>Tipo</th><th>Produto</th><th class="num">N</th><th class="num">Damage</th><th class="num">Wash</th><th class="num">POD</th></tr></thead><tbody id="tbl-apv-overview-product"></tbody></table></div></div>
-
-    <div class="subhead">Impacto na nota de avaliação <span class="sub-note">queda de nota média quando há reclamação — mede o custo de satisfação, não só o volume</span></div>
-    <div class="card"><div class="tbl-wrap"><table><thead><tr><th>Componente</th><th class="num">Nota sem reclamação</th><th class="num">Nota com reclamação</th><th class="num">Queda</th></tr></thead><tbody id="tbl-apv-overview-rating"></tbody></table></div></div>
-
-    <div class="subhead">Ranking de POD físico <span class="sub-note">taxa por reserva (não contagem bruta), mínimo 20 reservas por POD — não confundir com a categoria "POD" (Estacionamento)</span></div>
-    <div class="grid-lines">
-      <div class="card"><div class="card-title">Piores taxas</div><div class="tbl-wrap"><table><thead><tr><th>POD</th><th>Cidade</th><th class="num">N</th><th class="num">Taxa</th></tr></thead><tbody id="tbl-apv-overview-pod-worst"></tbody></table></div></div>
-      <div class="card"><div class="card-title">Melhores taxas</div><div class="tbl-wrap"><table><thead><tr><th>POD</th><th>Cidade</th><th class="num">N</th><th class="num">Taxa</th></tr></thead><tbody id="tbl-apv-overview-pod-best"></tbody></table></div></div>
+    <div class="ov-section">
+      <div class="ov-section-eyebrow">Achado 2</div>
+      <h3 class="ov-title">Dias desde a última lavagem</h3>
+      <p class="ov-finding-line" id="apv-ov-washdays-finding"></p>
+      <div class="card"><div id="c-apvOverviewWashDays"></div><div class="legend-row" id="c-apvOverviewWashDays-legend"></div></div>
     </div>
 
-    <div class="subhead">Dentro do "Other" de Damage <span class="sub-note">nuvem de palavras só dos comentários desse bucket — mesma anonimização do resto do painel, texto bruto nunca chega ao navegador</span></div>
-    <div class="card"><div id="c-apv-overview-other-words" class="word-cloud"></div></div>
+    <div class="ov-section">
+      <div class="ov-section-eyebrow">Achado 3</div>
+      <h3 class="ov-title">Categoria e modelo de veículo</h3>
+      <p class="ov-finding-line" id="apv-ov-model-finding"></p>
+      <div class="grid-lines">
+        <div class="card"><div class="card-title">Por categoria <span class="sub-note">mín. 30 reservas</span></div><div class="tbl-wrap"><table><thead><tr><th>Categoria</th><th class="num">N</th><th class="num">Damage</th><th class="num">Wash</th><th class="num">POD</th></tr></thead><tbody id="tbl-apv-overview-category"></tbody></table></div></div>
+        <div class="card"><div class="card-title">Top modelos por Damage <span class="sub-note">mín. 50 reservas</span></div><div class="tbl-wrap"><table><thead><tr><th>Modelo</th><th class="num">N</th><th class="num">Damage</th><th class="num">Wash</th><th class="num">POD</th></tr></thead><tbody id="tbl-apv-overview-model"></tbody></table></div></div>
+      </div>
+    </div>
 
-    <div class="subhead">Nota lateral <span class="sub-note">fora do cálculo oficial de Claim/APV</span></div>
-    <div class="callout-box" id="apv-overview-unclassified-note"></div>
+    <div class="ov-section">
+      <div class="ov-section-eyebrow">Achado 4</div>
+      <h3 class="ov-title">Produto e tipo de reserva</h3>
+      <p class="ov-finding-line" id="apv-ov-product-finding"></p>
+      <div class="card"><div class="tbl-wrap"><table><thead><tr><th>Tipo</th><th>Produto</th><th class="num">N</th><th class="num">Damage</th><th class="num">Wash</th><th class="num">POD</th></tr></thead><tbody id="tbl-apv-overview-product"></tbody></table></div></div>
+    </div>
+
+    <div class="ov-section">
+      <div class="ov-section-eyebrow">Achado 5</div>
+      <h3 class="ov-title">Impacto na nota de avaliação</h3>
+      <p class="ov-finding-line" id="apv-ov-rating-finding"></p>
+      <div class="card"><div class="tbl-wrap"><table><thead><tr><th>Componente</th><th class="num">Nota sem reclamação</th><th class="num">Nota com reclamação</th><th class="num">Queda</th></tr></thead><tbody id="tbl-apv-overview-rating"></tbody></table></div></div>
+    </div>
+
+    <div class="ov-section">
+      <div class="ov-section-eyebrow">Achado 6</div>
+      <h3 class="ov-title">Ranking de POD físico</h3>
+      <p class="ov-finding-line" id="apv-ov-pod-finding"></p>
+      <div class="grid-lines">
+        <div class="card"><div class="card-title">Piores taxas <span class="sub-note">mín. 20 reservas</span></div><div class="tbl-wrap"><table><thead><tr><th>POD</th><th>Cidade</th><th class="num">N</th><th class="num">Taxa</th></tr></thead><tbody id="tbl-apv-overview-pod-worst"></tbody></table></div></div>
+        <div class="card"><div class="card-title">Melhores taxas</div><div class="tbl-wrap"><table><thead><tr><th>POD</th><th>Cidade</th><th class="num">N</th><th class="num">Taxa</th></tr></thead><tbody id="tbl-apv-overview-pod-best"></tbody></table></div></div>
+      </div>
+    </div>
+
+    <div class="ov-section">
+      <div class="ov-section-eyebrow">Achado 7 — taxonomia</div>
+      <h3 class="ov-title">Dentro do "Other" de Damage</h3>
+      <p class="ov-finding-line">Nuvem de palavras só dos comentários desse bucket — mesma anonimização do resto do painel, texto bruto nunca chega ao navegador.</p>
+      <div class="card"><div id="c-apv-overview-other-words" class="word-cloud"></div></div>
+    </div>
+
+    <div class="callout-box" id="apv-overview-unclassified-note" style="margin:28px 0"></div>
+
+    <div class="ov-section">
+      <div class="ov-section-eyebrow">Priorização</div>
+      <h3 class="ov-title">Por onde começar</h3>
+      <p class="ov-finding-line">Ordenado por impacto — volume × distância da média geral (modelo/POD) ou queda de nota (componente).</p>
+      <div class="card" style="padding:4px 22px"><div class="ov-action-list" id="apv-ov-actions"></div></div>
+    </div>
 
     </div>
     </section>
@@ -939,6 +1038,24 @@ function wordCloud(elId, words){
   }).join(' ');
 }
 
+// ── Componentes editoriais das páginas "Visão Geral" (achado em destaque, ação priorizada) ──
+// Tudo calculado a partir do dado real recebido, nunca texto fixo — evita a página "envelhecer".
+function renderFindingHero(elId, labelText, headlineHtml){
+  document.getElementById(elId).innerHTML = `<div class="lbl">${labelText}</div><div class="headline">${headlineHtml}</div>`;
+}
+
+// actions: [{title, evidence}], já ordenado por impacto (maior primeiro) por quem chama.
+function renderOvActionList(elId, actions){
+  const el = document.getElementById(elId);
+  if (!actions.length) { el.innerHTML = '<p class="note">Sem oportunidade clara acima do piso de amostra mínima no período selecionado.</p>'; return; }
+  el.innerHTML = actions.map((a,i) => `
+    <div class="action-row">
+      <div class="ov-prio-badge">${i+1}</div>
+      <div class="ov-action-row-body"><h4>${a.title}</h4><p>${a.evidence}</p></div>
+    </div>
+  `).join('');
+}
+
 function buildLegend(elId, items){
   document.getElementById(elId).innerHTML = items.map(it=>`<span class="legend-item"><span class="legend-sw" style="background:${it.color}"></span>${it.name}</span>`).join('');
 }
@@ -1200,14 +1317,30 @@ function renderIndispOverviewSubstatus(){
   });
 }
 
+// "Carros-dia de oportunidade": se esse segmento tivesse a taxa geral em vez da própria,
+// quanto carro-dia se recuperaria. Unidade comum pra comparar categoria/modelo/POD/idade
+// na mesma lista de priorização, mesmo sendo cortes de natureza diferente.
+function excessCarrosDia_(pct, totalSeg, baselinePct){
+  return Math.max(0, ((pct - baselinePct) / 100) * (totalSeg / 86400));
+}
+
 function renderIndispOverview(data){
   const b = data.baseline;
-  const totalCarrosDia = round2(b.totalSegPeriodo > 0 ? data.byCategory.reduce((s,c)=>s+c.carrosDia,0) : 0);
-  const topCategoria = data.byCategory.slice().sort((a,b)=>b.carrosDia-a.carrosDia)[0];
+  const totalCarrosDia = round2(data.byCategory.reduce((s,c)=>s+c.carrosDia,0));
+  const catsByCarrosDia = data.byCategory.slice().sort((a,b)=>b.carrosDia-a.carrosDia);
+  const topCategoria = catsByCarrosDia[0];
+  const top3Share = topCategoria ? round2(100 * catsByCarrosDia.slice(0,3).reduce((s,c)=>s+c.carrosDia,0) / (totalCarrosDia || 1)) : 0;
+
+  renderFindingHero('indisp-ov-hero', 'Achado principal',
+    topCategoria
+      ? `<b>${topCategoria.name}</b> é a maior fonte de frota parada: <b>${topCategoria.carrosDia.toLocaleString('pt-BR')} carros-dia</b> perdidos no período (${topCategoria.pct.toFixed(2)}% da frota), sob responsabilidade de <b>${topCategoria.responsavel}</b>.`
+      : 'Sem dado suficiente no período selecionado.'
+  );
+
   document.getElementById('indisp-overview-heroes').innerHTML = `
     <div class="hero-card"><div class="hero-eye">Cálculo BQ direto</div><div class="hero-num">${b.bqDireto.toFixed(2)}%</div></div>
     <div class="hero-card"><div class="hero-eye">Carros-dia perdidos no período</div><div class="hero-num">${totalCarrosDia.toLocaleString('pt-BR')}</div></div>
-    <div class="hero-card"><div class="hero-eye">Maior categoria (carros-dia)</div><div class="hero-num">${topCategoria ? topCategoria.name : '—'}</div><div class="hero-sub">${topCategoria ? topCategoria.carrosDia.toLocaleString('pt-BR')+' carros-dia · '+topCategoria.responsavel : ''}</div></div>
+    <div class="hero-card"><div class="hero-eye">Top 3 categorias</div><div class="hero-num">${top3Share.toFixed(0)}%</div><div class="hero-sub">do total de carros-dia perdidos</div></div>
   `;
 
   trendLineChart('c-indispOverviewTrend', {
@@ -1215,15 +1348,31 @@ function renderIndispOverview(data){
     series: [{ name: 'Indisponibilidade', color: 'var(--standard)', values: data.weekly.bqDireto }],
     height: 190,
   });
+  const wk = data.weekly.bqDireto;
+  if (wk.length >= 4) {
+    const half = Math.floor(wk.length/2);
+    const primeira = wk.slice(0, half).reduce((a,b)=>a+b,0)/half;
+    const segunda = wk.slice(half).reduce((a,b)=>a+b,0)/(wk.length-half);
+    const delta = segunda - primeira;
+    const direcao = Math.abs(delta) < 0.15 ? 'estável' : (delta < 0 ? 'caindo' : 'subindo');
+    document.getElementById('indisp-ov-trend-finding').innerHTML =
+      `Primeira metade do período: <b>${primeira.toFixed(2)}%</b> em média · segunda metade: <b>${segunda.toFixed(2)}%</b> — ${direcao}${direcao!=='estável' ? ` (${delta>0?'+':''}${delta.toFixed(2)}pp)` : ''}.`;
+  }
 
-  document.getElementById('tbl-indisp-overview-category').innerHTML = data.byCategory
-    .slice().sort((a,b)=>b.carrosDia-a.carrosDia)
+  document.getElementById('tbl-indisp-overview-category').innerHTML = catsByCarrosDia
     .map(c => `<tr><td><span class="legend-sw" style="background:${c.color};display:inline-block;margin-right:6px"></span>${c.name}</td><td>${c.responsavel}</td><td class="num">${c.pct.toFixed(2)}%</td><td class="num">${c.carrosDia.toLocaleString('pt-BR')}</td></tr>`)
     .join('');
+  document.getElementById('indisp-ov-category-finding').innerHTML =
+    `As <b>3 maiores categorias</b> (${catsByCarrosDia.slice(0,3).map(c=>c.name).join(', ')}) somam <b>${top3Share.toFixed(0)}%</b> de todo o carro-dia perdido — priorizar essas antes de espalhar esforço pelas 12.`;
 
   document.getElementById('tbl-indisp-overview-responsavel').innerHTML = data.byResponsavel
     .map(r => `<tr><td>${r.responsavel}</td><td class="num">${r.pct.toFixed(2)}%</td><td class="num">${r.carrosDia.toLocaleString('pt-BR')}</td></tr>`)
     .join('');
+  const topResp = data.byResponsavel[0];
+  if (topResp) {
+    document.getElementById('indisp-ov-responsavel-finding').innerHTML =
+      `<b>${topResp.responsavel}</b> concentra <b>${topResp.pct.toFixed(2)}%</b> (${topResp.carrosDia.toLocaleString('pt-BR')} carros-dia) da indisponibilidade total no período.`;
+  }
 
   const catSelect = document.getElementById('indisp-overview-category-select');
   const catNames = data.byCategory.map(c => c.name);
@@ -1233,15 +1382,71 @@ function renderIndispOverview(data){
 
   document.getElementById('tbl-indisp-overview-vehiclecategory').innerHTML = indispRateRowsHtml(data.byVehicleCategory, 'label');
   document.getElementById('tbl-indisp-overview-model').innerHTML = indispRateRowsHtml(data.byModel, 'label');
+  const topModel = data.byModel[0];
+  if (topModel) {
+    const razao = topModel.pct / (b.bqDireto || 1);
+    document.getElementById('indisp-ov-model-finding').innerHTML =
+      `<b>${topModel.label}</b> tem taxa de <b>${topModel.pct.toFixed(2)}%</b> (${topModel.nVeiculos} veículos) — ${razao.toFixed(1)}× a média geral (${b.bqDireto.toFixed(2)}%).`;
+  }
 
   groupedBarChart('c-indispOverviewAge', {
     labels: data.byAge.map(r => r.label),
     series: [{ name: 'Taxa de indisponibilidade', color: 'var(--standard)', values: data.byAge.map(r => r.pct) }],
     height: 190,
   });
+  const ageValid = data.byAge.filter(r => r.label !== 'sem dado' && r.nVeiculos > 0);
+  if (ageValid.length >= 2) {
+    const minA = ageValid[0], maxA = ageValid[ageValid.length-1];
+    const razaoIdade = maxA.pct / (minA.pct || 0.01);
+    document.getElementById('indisp-ov-age-finding').innerHTML =
+      `Frota <b>${minA.label} dias</b>: ${minA.pct.toFixed(2)}% de indisponibilidade · frota <b>${maxA.label} dias</b>: ${maxA.pct.toFixed(2)}% — ${razaoIdade.toFixed(1)}× mais indisponível na faixa mais velha.`;
+  }
 
   document.getElementById('tbl-indisp-overview-pod-worst').innerHTML = indispRateRowsHtml(data.podRanking.worst, 'label');
   document.getElementById('tbl-indisp-overview-pod-best').innerHTML = indispRateRowsHtml(data.podRanking.best, 'label');
+  const worstPod = data.podRanking.worst[0], bestPod = data.podRanking.best[0];
+  if (worstPod && bestPod) {
+    document.getElementById('indisp-ov-pod-finding').innerHTML =
+      `Pior POD (<b>${worstPod.label}</b>): ${worstPod.pct.toFixed(2)}% · melhor (<b>${bestPod.label}</b>): ${bestPod.pct.toFixed(2)}% — diferença de <b>${(worstPod.pct-bestPod.pct).toFixed(1)}pp</b> entre pontos com volume comparável de frota.`;
+  }
+
+  // Priorização: categorias por carros-dia direto + modelo/vehicleCategory/pod/idade por
+  // "carros-dia de oportunidade" (excesso sobre a taxa geral) — mesma unidade, comparável.
+  const candidates = [];
+  catsByCarrosDia.slice(0, 2).forEach(c => {
+    candidates.push({
+      title: `Reduzir "${c.name}" (${c.responsavel})`,
+      evidence: `${c.carrosDia.toLocaleString('pt-BR')} carros-dia perdidos no período (${c.pct.toFixed(2)}% da frota) — maior bloco isolado do indicador.`,
+      impact: c.carrosDia,
+    });
+  });
+  if (topModel) {
+    const extra = excessCarrosDia_(topModel.pct, topModel.totalSeg, b.bqDireto);
+    candidates.push({
+      title: `Inspecionar frota do modelo ${topModel.label}`,
+      evidence: `Taxa ${topModel.pct.toFixed(2)}% vs. ${b.bqDireto.toFixed(2)}% geral, em ${topModel.nVeiculos} veículos — ≈${extra.toFixed(0)} carros-dia de oportunidade se igualasse a média.`,
+      impact: extra,
+    });
+  }
+  if (worstPod) {
+    const extra = excessCarrosDia_(worstPod.pct, worstPod.totalSeg, b.bqDireto);
+    candidates.push({
+      title: `Auditoria operacional no POD ${worstPod.label}`,
+      evidence: `Taxa ${worstPod.pct.toFixed(2)}% vs. ${b.bqDireto.toFixed(2)}% geral, em ${worstPod.nVeiculos} veículos — ≈${extra.toFixed(0)} carros-dia de oportunidade.`,
+      impact: extra,
+    });
+  }
+  if (ageValid.length >= 2) {
+    const maxA = ageValid[ageValid.length-1];
+    const extra = excessCarrosDia_(maxA.pct, maxA.totalSeg, b.bqDireto);
+    candidates.push({
+      title: `Priorizar desmobilização/manutenção preventiva na frota ${maxA.label} dias`,
+      evidence: `Taxa ${maxA.pct.toFixed(2)}% vs. ${b.bqDireto.toFixed(2)}% geral, em ${maxA.nVeiculos} veículos — ≈${extra.toFixed(0)} carros-dia de oportunidade.`,
+      impact: extra,
+    });
+  }
+  candidates.sort((a,b) => b.impact - a.impact);
+  renderOvActionList('indisp-ov-actions', candidates.slice(0, 5));
 }
 
 async function atualizarIndispOverview(){
@@ -1406,8 +1611,23 @@ function apvOverviewRateRowsHtml(rows){
   ).join('');
 }
 
+// Reservas "extras" com reclamação se o segmento tivesse a taxa geral em vez da própria —
+// mesma lógica de "carros-dia de oportunidade" do Indisponibilidade, adaptada pra reservas.
+function excessReservas_(pct, n, baselinePct){
+  return Math.max(0, ((pct - baselinePct) / 100) * n);
+}
+
 function renderApvOverview(data){
   const b = data.baseline;
+  const topModel = data.byModel[0];
+  const worstPod = data.podRanking.worst[0];
+
+  renderFindingHero('apv-ov-hero', 'Achado principal',
+    topModel
+      ? `<b>${topModel.label}</b> tem taxa de Damage de <b>${topModel.damage.toFixed(2)}%</b> — ${(topModel.damage/(b.damage||0.01)).toFixed(1)}× a média geral (${b.damage.toFixed(2)}%), em ${topModel.n.toLocaleString('pt-BR')} reservas.`
+      : 'Sem dado suficiente no período selecionado.'
+  );
+
   document.getElementById('apv-overview-heroes').innerHTML = `
     <div class="hero-card c-claim"><div class="hero-eye">Damage</div><div class="hero-num">${b.damage.toFixed(2)}%</div><div class="hero-sub">${b.n.toLocaleString('pt-BR')} reservas avaliadas</div></div>
     <div class="hero-card c-claim"><div class="hero-eye">Wash</div><div class="hero-num">${b.wash.toFixed(2)}%</div></div>
@@ -1422,6 +1642,15 @@ function renderApvOverview(data){
     ],
     height: 190,
   });
+  const wkD = data.weekly.damage, wkW = data.weekly.wash;
+  if (wkD.length >= 4) {
+    const half = Math.floor(wkD.length/2);
+    const avg = arr => arr.reduce((a,b)=>a+b,0)/arr.length;
+    const d1 = avg(wkD.slice(0,half)), d2 = avg(wkD.slice(half));
+    const w1 = avg(wkW.slice(0,half)), w2 = avg(wkW.slice(half));
+    document.getElementById('apv-ov-trend-finding').innerHTML =
+      `Damage: <b>${d1.toFixed(2)}%</b> → <b>${d2.toFixed(2)}%</b> · Wash: <b>${w1.toFixed(2)}%</b> → <b>${w2.toFixed(2)}%</b> (1ª vs. 2ª metade do período) — ${(d2<d1&&w2<w1)?'as duas caindo, sinal de melhora real':'sem melhora consistente nas duas'}.`;
+  }
 
   groupedBarChart('c-apvOverviewAge', {
     labels: data.byAge.map(r => r.label),
@@ -1431,6 +1660,13 @@ function renderApvOverview(data){
     ],
     height: 200,
   });
+  const ageValid = data.byAge.filter(r => r.label !== 'sem dado' && r.n > 0);
+  let maxAge = null;
+  if (ageValid.length >= 2) {
+    const minAge = ageValid[0]; maxAge = ageValid[ageValid.length-1];
+    document.getElementById('apv-ov-age-finding').innerHTML =
+      `Frota <b>${minAge.label} dias</b>: ${minAge.damage.toFixed(2)}% Damage · frota <b>${maxAge.label} dias</b>: ${maxAge.damage.toFixed(2)}% — ${(maxAge.damage/(minAge.damage||0.01)).toFixed(1)}× mais reclamação na faixa mais velha.`;
+  }
 
   groupedBarChart('c-apvOverviewWashDays', {
     labels: data.byWashDays.map(r => r.label),
@@ -1440,13 +1676,28 @@ function renderApvOverview(data){
     ],
     height: 200,
   });
+  const wdValid = data.byWashDays.filter(r => r.label !== 'sem dado' && r.n > 0);
+  if (wdValid.length >= 2) {
+    const first = wdValid[0], last = wdValid[wdValid.length-1];
+    document.getElementById('apv-ov-washdays-finding').innerHTML =
+      `${first.label} dias sem lavar: <b>${first.wash.toFixed(2)}%</b> Wash · ${last.label} dias: <b>${last.wash.toFixed(2)}%</b> — mesmo recém-lavado, ${first.wash.toFixed(1)}% ainda reclama (qualidade da lavagem, não só frequência).`;
+  }
 
   document.getElementById('tbl-apv-overview-category').innerHTML = apvOverviewRateRowsHtml(data.byCategory);
   document.getElementById('tbl-apv-overview-model').innerHTML = apvOverviewRateRowsHtml(data.byModel);
+  if (topModel) {
+    document.getElementById('apv-ov-model-finding').innerHTML =
+      `<b>${topModel.label}</b> lidera Damage (${topModel.damage.toFixed(2)}%, ${topModel.n.toLocaleString('pt-BR')} reservas) — ver tabela completa pra outros modelos/categorias fora da curva.`;
+  }
 
   document.getElementById('tbl-apv-overview-product').innerHTML = data.byProduct.map(r =>
     `<tr><td>${r.bookingType}</td><td>${r.produto}</td><td class="num">${r.n}</td><td class="num">${r.damage.toFixed(2)}%</td><td class="num">${r.wash.toFixed(2)}%</td><td class="num">${r.pod.toFixed(2)}%</td></tr>`
   ).join('');
+  const topProduct = data.byProduct.slice().sort((a,b)=>b.damage-a.damage)[0];
+  if (topProduct) {
+    document.getElementById('apv-ov-product-finding').innerHTML =
+      `<b>${topProduct.produto}</b> (${topProduct.bookingType}) tem a maior taxa de Damage entre os produtos com volume relevante: <b>${topProduct.damage.toFixed(2)}%</b> vs. ${b.damage.toFixed(2)}% geral.`;
+  }
 
   const ri = data.ratingImpact;
   document.getElementById('tbl-apv-overview-rating').innerHTML = ['damage', 'wash', 'pod'].map(k => {
@@ -1455,16 +1706,66 @@ function renderApvOverview(data){
     const queda = (sem != null && com != null) ? (com - sem).toFixed(2) : '—';
     return `<tr><td>${k.charAt(0).toUpperCase()+k.slice(1)}</td><td class="num">${sem!=null?sem.toFixed(2):'—'}</td><td class="num">${com!=null?com.toFixed(2):'—'}</td><td class="num">${queda}</td></tr>`;
   }).join('');
+  const quedas = ['damage','wash','pod'].map(k => ({ k, queda: (ri[k]&&ri[k].sem!=null&&ri[k].com!=null) ? ri[k].com-ri[k].sem : 0 })).sort((a,b)=>a.queda-b.queda);
+  const piorQueda = quedas[0];
+  if (piorQueda) {
+    document.getElementById('apv-ov-rating-finding').innerHTML =
+      `<b>${piorQueda.k.charAt(0).toUpperCase()+piorQueda.k.slice(1)}</b> derruba a nota mais que os outros 2 (${piorQueda.queda.toFixed(2)} pontos) — pesa mais na satisfação do que sugere só o volume de reclamação.`;
+  }
 
   const podRowHtml = r => `<tr><td>${r.podName}</td><td>${r.podCity ?? '—'}</td><td class="num">${r.n}</td><td class="num">${r.any.toFixed(2)}%</td></tr>`;
   document.getElementById('tbl-apv-overview-pod-worst').innerHTML = data.podRanking.worst.map(podRowHtml).join('');
   document.getElementById('tbl-apv-overview-pod-best').innerHTML = data.podRanking.best.map(podRowHtml).join('');
+  const bestPod = data.podRanking.best[0];
+  if (worstPod && bestPod) {
+    document.getElementById('apv-ov-pod-finding').innerHTML =
+      `Pior POD (<b>${worstPod.podName}</b>): ${worstPod.any.toFixed(2)}% · melhor (<b>${bestPod.podName}</b>): ${bestPod.any.toFixed(2)}% — diferença de <b>${(worstPod.any-bestPod.any).toFixed(1)}pp</b> com volume comparável.`;
+  }
 
   wordCloud('c-apv-overview-other-words', data.otherWords);
 
   const u = data.unclassified;
   document.getElementById('apv-overview-unclassified-note').innerHTML =
     `<b>${u.pct.toFixed(1)}%</b> de todos os itens avaliados no período (não só Damage/Wash/POD) caem em "Não classificado" — a maior categoria da view inteira. Não muda o cálculo oficial de Claim/APV, mas sinaliza possível insatisfação de cliente fora do que os 3 indicadores capturam hoje.`;
+
+  // Priorização — mesma unidade (reservas em excesso sobre a média) pra modelo/POD/idade;
+  // nota usa queda × volume estimado de reservas afetadas.
+  const candidates = [];
+  if (topModel) {
+    const extra = excessReservas_(topModel.damage, topModel.n, b.damage);
+    candidates.push({
+      title: `Inspecionar frota do modelo ${topModel.label}`,
+      evidence: `Damage ${topModel.damage.toFixed(2)}% vs. ${b.damage.toFixed(2)}% geral, em ${topModel.n.toLocaleString('pt-BR')} reservas — ≈${extra.toFixed(0)} reservas a mais com Damage do que se estivesse na média.`,
+      impact: extra,
+    });
+  }
+  if (worstPod) {
+    const nAffected = worstPod.n * worstPod.any / 100;
+    candidates.push({
+      title: `Auditoria operacional no POD ${worstPod.podName}`,
+      evidence: `${worstPod.any.toFixed(2)}% de taxa combinada (Damage+Wash+POD) em ${worstPod.n.toLocaleString('pt-BR')} reservas — ≈${nAffected.toFixed(0)} reservas afetadas.`,
+      impact: nAffected,
+    });
+  }
+  if (maxAge) {
+    const extra = excessReservas_(maxAge.damage, maxAge.n, b.damage);
+    candidates.push({
+      title: `Manutenção preventiva na frota ${maxAge.label} dias`,
+      evidence: `Damage ${maxAge.damage.toFixed(2)}% vs. ${b.damage.toFixed(2)}% geral, em ${maxAge.n.toLocaleString('pt-BR')} reservas — ≈${extra.toFixed(0)} reservas de oportunidade.`,
+      impact: extra,
+    });
+  }
+  if (piorQueda && piorQueda.queda < 0) {
+    const compBaseline = b[piorQueda.k] || 0;
+    const nAfetadas = (compBaseline/100) * b.n;
+    candidates.push({
+      title: `Priorizar redução de ${piorQueda.k.charAt(0).toUpperCase()+piorQueda.k.slice(1)} pelo impacto em satisfação`,
+      evidence: `Cada reclamação de ${piorQueda.k} derruba a nota em ${Math.abs(piorQueda.queda).toFixed(2)} pontos — ≈${nAfetadas.toFixed(0)} reservas afetadas no período, o maior custo de satisfação dos 3 componentes.`,
+      impact: nAfetadas * Math.abs(piorQueda.queda),
+    });
+  }
+  candidates.sort((a,b) => b.impact - a.impact);
+  renderOvActionList('apv-ov-actions', candidates.slice(0, 5));
 }
 
 async function atualizarApvOverview(){
