@@ -156,6 +156,8 @@
   .filter-row label { font-size:12.5px; color:var(--muted); display:flex; align-items:center; gap:6px; }
   #apv-damage-clear-filter { background:var(--surface); border:1px solid var(--line); color:var(--ink); border-radius:6px; padding:6px 12px; font-size:12.5px; cursor:pointer; }
   #apv-damage-clear-filter:hover { background:var(--surface-2); }
+  .callout-box { border:1px dashed var(--teal); background:var(--teal-soft); border-radius:10px; padding:14px 18px; font-size:13px; color:var(--ink); }
+  .callout-box b { color:var(--teal); }
 </style>
 </head>
 <body>
@@ -188,10 +190,11 @@
         </a>
       </li>
       <li class="nav-group">
-        <a href="#apv/damage" class="nav-item" data-route="apv/damage" data-tip="APV">
+        <a href="#apv/overview" class="nav-item" data-route="apv/overview" data-tip="APV">
           <span class="nav-icon">🛠️</span><span class="nav-label">APV</span>
         </a>
         <ul class="nav-sublist">
+          <li><a href="#apv/overview" class="nav-subitem" data-route="apv/overview">Visão Geral</a></li>
           <li><a href="#apv/damage" class="nav-subitem" data-route="apv/damage">Damage</a></li>
           <li><a href="#apv/wash" class="nav-subitem" data-route="apv/wash">Wash</a></li>
           <li><a href="#apv/pod" class="nav-subitem" data-route="apv/pod">POD</a></li>
@@ -311,6 +314,59 @@
 </div>
 
 </div>
+    </section>
+
+    <!-- ============================================================ APV — VISÃO GERAL (investigação) ============================================================ -->
+    <section class="page" id="page-apv-overview" data-page="apv/overview" hidden>
+    <div class="wrap" id="content-area-apv-overview">
+
+    <div class="sec-head sec-claim"><span class="sec-num">🔍</span><h2 class="sec-title">APV — Visão Geral</h2></div>
+    <p class="sec-owner">Investigação cruzando Damage, Wash e POD — estratificação por idade do carro, modelo, produto, nota e local físico, com achados e priorização de ação. Recalcula ao clicar em "Atualizar dados" ou trocar o período.</p>
+
+    <div class="subhead">Período <span class="sub-note">controla toda a análise desta página</span></div>
+    <div class="card filter-row">
+      <label>De: <select id="apv-overview-start" onchange="loadApvOverview()"></select></label>
+      <label>Até: <select id="apv-overview-end" onchange="loadApvOverview()"></select></label>
+    </div>
+
+    <div class="hero-row" id="apv-overview-heroes">
+      <div class="hero-card c-claim"><div class="hero-eye">Carregando…</div><div class="hero-num">—</div></div>
+    </div>
+
+    <div class="subhead">Tendência semanal <span class="sub-note">Damage e Wash — se estiver caindo ao longo do período, é sinal de melhora real, não ruído</span></div>
+    <div class="card"><div id="c-apvOverviewTrend"></div></div>
+
+    <div class="subhead">Por idade do carro <span class="sub-note">geralmente o fator mais forte — gradiente monotônico é sinal de causa real, não coincidência</span></div>
+    <div class="card"><div id="c-apvOverviewAge"></div><div class="legend-row" id="c-apvOverviewAge-legend"></div></div>
+
+    <div class="subhead">Por dias desde a última lavagem <span class="sub-note">Wash sobe com o tempo — Damage também, efeito colateral de carro rodando mais desgastado</span></div>
+    <div class="card"><div id="c-apvOverviewWashDays"></div><div class="legend-row" id="c-apvOverviewWashDays-legend"></div></div>
+
+    <div class="subhead">Por categoria e modelo de veículo <span class="sub-note">mínimo de reservas aplicado — categoria ≥30, modelo ≥50 (top 15 por Damage)</span></div>
+    <div class="grid-lines">
+      <div class="card"><div class="card-title">Por categoria</div><div class="tbl-wrap"><table><thead><tr><th>Categoria</th><th class="num">N</th><th class="num">Damage</th><th class="num">Wash</th><th class="num">POD</th></tr></thead><tbody id="tbl-apv-overview-category"></tbody></table></div></div>
+      <div class="card"><div class="card-title">Top modelos por Damage</div><div class="tbl-wrap"><table><thead><tr><th>Modelo</th><th class="num">N</th><th class="num">Damage</th><th class="num">Wash</th><th class="num">POD</th></tr></thead><tbody id="tbl-apv-overview-model"></tbody></table></div></div>
+    </div>
+
+    <div class="subhead">Por produto/tipo de reserva <span class="sub-note">mínimo 20 reservas, top 20 por volume</span></div>
+    <div class="card"><div class="tbl-wrap"><table><thead><tr><th>Tipo</th><th>Produto</th><th class="num">N</th><th class="num">Damage</th><th class="num">Wash</th><th class="num">POD</th></tr></thead><tbody id="tbl-apv-overview-product"></tbody></table></div></div>
+
+    <div class="subhead">Impacto na nota de avaliação <span class="sub-note">queda de nota média quando há reclamação — mede o custo de satisfação, não só o volume</span></div>
+    <div class="card"><div class="tbl-wrap"><table><thead><tr><th>Componente</th><th class="num">Nota sem reclamação</th><th class="num">Nota com reclamação</th><th class="num">Queda</th></tr></thead><tbody id="tbl-apv-overview-rating"></tbody></table></div></div>
+
+    <div class="subhead">Ranking de POD físico <span class="sub-note">taxa por reserva (não contagem bruta), mínimo 20 reservas por POD — não confundir com a categoria "POD" (Estacionamento)</span></div>
+    <div class="grid-lines">
+      <div class="card"><div class="card-title">Piores taxas</div><div class="tbl-wrap"><table><thead><tr><th>POD</th><th>Cidade</th><th class="num">N</th><th class="num">Taxa</th></tr></thead><tbody id="tbl-apv-overview-pod-worst"></tbody></table></div></div>
+      <div class="card"><div class="card-title">Melhores taxas</div><div class="tbl-wrap"><table><thead><tr><th>POD</th><th>Cidade</th><th class="num">N</th><th class="num">Taxa</th></tr></thead><tbody id="tbl-apv-overview-pod-best"></tbody></table></div></div>
+    </div>
+
+    <div class="subhead">Dentro do "Other" de Damage <span class="sub-note">nuvem de palavras só dos comentários desse bucket — mesma anonimização do resto do painel, texto bruto nunca chega ao navegador</span></div>
+    <div class="card"><div id="c-apv-overview-other-words" class="word-cloud"></div></div>
+
+    <div class="subhead">Nota lateral <span class="sub-note">fora do cálculo oficial de Claim/APV</span></div>
+    <div class="callout-box" id="apv-overview-unclassified-note"></div>
+
+    </div>
     </section>
 
     <!-- ============================================================ APV — DAMAGE (drill-down) ============================================================ -->
@@ -459,6 +515,15 @@ async function fetchClaimDetail(component, startDate, endDate, city){
   if (!res.ok) throw new Error(`claim-detail (${component}): HTTP ${res.status}`);
   const data = await res.json();
   if (data && data.detail) throw new Error(`claim-detail (${component}): ${data.detail}`);
+  return data;
+}
+
+async function fetchClaimOverview(startDate, endDate){
+  const params = new URLSearchParams({ endpoint: 'claim-overview', start_date: startDate, end_date: endDate });
+  const res = await fetch(`${APPS_SCRIPT_URL}?${params.toString()}`);
+  if (!res.ok) throw new Error(`claim-overview: HTTP ${res.status}`);
+  const data = await res.json();
+  if (data && data.detail) throw new Error(`claim-overview: ${data.detail}`);
   return data;
 }
 
@@ -737,6 +802,62 @@ function paretoChart(elId, cfg){
   document.getElementById(elId).innerHTML=svg;
 }
 function truncateLabel(s, n){ s = String(s); return s.length > n ? s.slice(0, n-1) + '…' : s; }
+
+// Tendência de N séries sobrepostas (ex.: Damage x Wash por semana) — linha + ponto final
+// rotulado, sem eixo Y numerado (o rótulo no ponto já mostra o valor mais recente).
+function trendLineChart(elId, cfg){
+  const n = cfg.labels.length;
+  if (!n) { document.getElementById(elId).innerHTML = '<p class="note">Sem dados no período selecionado.</p>'; return; }
+  const W=640, H=cfg.height||190, padL=10, padR=64, padT=16, padB=22;
+  const innerW=W-padL-padR, innerH=H-padT-padB;
+  const allVals = cfg.series.flatMap(s=>s.values);
+  const max = Math.max(...allVals, 1) * 1.15, min = 0;
+  const x = i => padL + (innerW * i) / Math.max(n-1, 1);
+  const y = v => padT + innerH - ((v-min)/(max-min)) * innerH;
+  let svg = `<svg viewBox="0 0 ${W} ${H}" class="chart-svg">`;
+  svg += `<line x1="${padL}" y1="${y(0)}" x2="${padL+innerW}" y2="${y(0)}" class="chart-axis"/>`;
+  cfg.series.forEach(s=>{
+    const pts = s.values.map((v,i)=>`${x(i)},${y(v)}`).join(' ');
+    svg += `<polyline points="${pts}" fill="none" stroke="${s.color}" stroke-width="2"/>`;
+    const li = s.values.length-1;
+    svg += `<circle cx="${x(li)}" cy="${y(s.values[li])}" r="3" fill="${s.color}"/>`;
+    svg += `<text x="${x(li)+7}" y="${y(s.values[li])+4}" class="chart-lbl" style="fill:${s.color};font-weight:700">${s.name} ${s.values[li].toFixed(1)}%</text>`;
+  });
+  svg += `<text x="${padL}" y="${H-4}" class="chart-lbl">${cfg.labels[0]}</text>`;
+  svg += `<text x="${padL+innerW}" y="${H-4}" class="chart-lbl" text-anchor="end">${cfg.labels[n-1]}</text>`;
+  svg += '</svg>';
+  document.getElementById(elId).innerHTML = svg;
+}
+
+// Barras agrupadas — N séries lado a lado por categoria (ex.: Damage x Wash por faixa de idade).
+function groupedBarChart(elId, cfg){
+  const n = cfg.labels.length;
+  if (!n) { document.getElementById(elId).innerHTML = '<p class="note">Sem dados no período selecionado.</p>'; return; }
+  const W=640, H=cfg.height||200, padL=32, padR=12, padT=20, padB=30;
+  const innerW=W-padL-padR, innerH=H-padT-padB;
+  const groupGap = innerW/n;
+  const sc = cfg.series.length;
+  const barW = (groupGap*0.68)/sc;
+  const max = Math.max(...cfg.series.flatMap(s=>s.values), 1) * 1.15;
+  const y = v => padT+innerH-(v/max)*innerH;
+  let svg = `<svg viewBox="0 0 ${W} ${H}" class="chart-svg">`;
+  svg += `<line x1="${padL}" y1="${y(0)}" x2="${W-padR}" y2="${y(0)}" class="chart-axis"/>`;
+  for (let i=0; i<n; i++){
+    const groupX = padL + groupGap*i + (groupGap-barW*sc)/2;
+    cfg.series.forEach((s,si)=>{
+      const v = s.values[i];
+      const bx = groupX + si*barW;
+      svg += `<rect x="${bx}" y="${y(v)}" width="${barW*0.85}" height="${Math.max(y(0)-y(v),1)}" rx="2" fill="${s.color}" data-tip="${cfg.labels[i]} — ${s.name}: ${v.toFixed(2)}%"/>`;
+    });
+    svg += `<text x="${padL+groupGap*i+groupGap/2}" y="${H-8}" class="chart-lbl" text-anchor="middle">${cfg.labels[i]}</text>`;
+  }
+  svg += '</svg>';
+  document.getElementById(elId).innerHTML = svg;
+  const legendId = elId + '-legend';
+  if (document.getElementById(legendId)) {
+    buildLegend(legendId, cfg.series.map(s=>({name:s.name, color:s.color})));
+  }
+}
 
 // Nuvem de palavras: HTML/CSS puro (sem SVG), tamanho de fonte proporcional a sqrt(count)
 // pra uma palavra muito frequente não dominar visualmente o quadro todo.
@@ -1091,12 +1212,113 @@ async function atualizarApvComponent(component){
 }
 
 /* ============================================================================ */
+/* APV — Visão Geral: investigação viva cruzando Damage/Wash/POD                 */
+/* ============================================================================ */
+
+let apvOverviewMonthsPopulated = false;
+
+function populateApvOverviewMonthSelects(){
+  if (apvOverviewMonthsPopulated) return;
+  const months = ymRange('2026-01');
+  const startSel = document.getElementById('apv-overview-start');
+  const endSel = document.getElementById('apv-overview-end');
+  const opt = ym => `<option value="${ym}">${mesLabel(ym)}/${ym.slice(0,4)}</option>`;
+  startSel.innerHTML = months.map(opt).join('');
+  endSel.innerHTML = months.map(opt).join('');
+  startSel.value = months[0];
+  endSel.value = months[months.length-1];
+  apvOverviewMonthsPopulated = true;
+}
+
+async function loadApvOverview(){
+  const startYm = document.getElementById('apv-overview-start').value;
+  const endYm = document.getElementById('apv-overview-end').value;
+  const startDate = `${startYm}-01`;
+  const endDate = lastDayOfMonth(endYm);
+  const data = await fetchClaimOverview(startDate, endDate);
+  renderApvOverview(data);
+}
+
+function apvOverviewRateRowsHtml(rows){
+  return rows.map(r =>
+    `<tr><td>${r.label ?? '—'}</td><td class="num">${r.n}</td><td class="num">${r.damage.toFixed(2)}%</td><td class="num">${r.wash.toFixed(2)}%</td><td class="num">${r.pod.toFixed(2)}%</td></tr>`
+  ).join('');
+}
+
+function renderApvOverview(data){
+  const b = data.baseline;
+  document.getElementById('apv-overview-heroes').innerHTML = `
+    <div class="hero-card c-claim"><div class="hero-eye">Damage</div><div class="hero-num">${b.damage.toFixed(2)}%</div><div class="hero-sub">${b.n.toLocaleString('pt-BR')} reservas avaliadas</div></div>
+    <div class="hero-card c-claim"><div class="hero-eye">Wash</div><div class="hero-num">${b.wash.toFixed(2)}%</div></div>
+    <div class="hero-card c-claim"><div class="hero-eye">POD</div><div class="hero-num">${b.pod.toFixed(2)}%</div></div>
+  `;
+
+  trendLineChart('c-apvOverviewTrend', {
+    labels: data.weekly.labels,
+    series: [
+      { name: 'Damage', color: 'var(--critical)', values: data.weekly.damage },
+      { name: 'Wash', color: 'var(--blue)', values: data.weekly.wash },
+    ],
+    height: 190,
+  });
+
+  groupedBarChart('c-apvOverviewAge', {
+    labels: data.byAge.map(r => r.label),
+    series: [
+      { name: 'Damage', color: 'var(--critical)', values: data.byAge.map(r => r.damage) },
+      { name: 'Wash', color: 'var(--blue)', values: data.byAge.map(r => r.wash) },
+    ],
+    height: 200,
+  });
+
+  groupedBarChart('c-apvOverviewWashDays', {
+    labels: data.byWashDays.map(r => r.label),
+    series: [
+      { name: 'Wash', color: 'var(--blue)', values: data.byWashDays.map(r => r.wash) },
+      { name: 'Damage', color: 'var(--critical)', values: data.byWashDays.map(r => r.damage) },
+    ],
+    height: 200,
+  });
+
+  document.getElementById('tbl-apv-overview-category').innerHTML = apvOverviewRateRowsHtml(data.byCategory);
+  document.getElementById('tbl-apv-overview-model').innerHTML = apvOverviewRateRowsHtml(data.byModel);
+
+  document.getElementById('tbl-apv-overview-product').innerHTML = data.byProduct.map(r =>
+    `<tr><td>${r.bookingType}</td><td>${r.produto}</td><td class="num">${r.n}</td><td class="num">${r.damage.toFixed(2)}%</td><td class="num">${r.wash.toFixed(2)}%</td><td class="num">${r.pod.toFixed(2)}%</td></tr>`
+  ).join('');
+
+  const ri = data.ratingImpact;
+  document.getElementById('tbl-apv-overview-rating').innerHTML = ['damage', 'wash', 'pod'].map(k => {
+    const comp = ri[k] || {};
+    const sem = comp.sem, com = comp.com;
+    const queda = (sem != null && com != null) ? (com - sem).toFixed(2) : '—';
+    return `<tr><td>${k.charAt(0).toUpperCase()+k.slice(1)}</td><td class="num">${sem!=null?sem.toFixed(2):'—'}</td><td class="num">${com!=null?com.toFixed(2):'—'}</td><td class="num">${queda}</td></tr>`;
+  }).join('');
+
+  const podRowHtml = r => `<tr><td>${r.podName}</td><td>${r.podCity ?? '—'}</td><td class="num">${r.n}</td><td class="num">${r.any.toFixed(2)}%</td></tr>`;
+  document.getElementById('tbl-apv-overview-pod-worst').innerHTML = data.podRanking.worst.map(podRowHtml).join('');
+  document.getElementById('tbl-apv-overview-pod-best').innerHTML = data.podRanking.best.map(podRowHtml).join('');
+
+  wordCloud('c-apv-overview-other-words', data.otherWords);
+
+  const u = data.unclassified;
+  document.getElementById('apv-overview-unclassified-note').innerHTML =
+    `<b>${u.pct.toFixed(1)}%</b> de todos os itens avaliados no período (não só Damage/Wash/POD) caem em "Não classificado" — a maior categoria da view inteira. Não muda o cálculo oficial de Claim/APV, mas sinaliza possível insatisfação de cliente fora do que os 3 indicadores capturam hoje.`;
+}
+
+async function atualizarApvOverview(){
+  populateApvOverviewMonthSelects();
+  await loadApvOverview();
+}
+
+/* ============================================================================ */
 /* Roteador por hash (menu lateral) — cada página busca/renderiza seu próprio    */
 /* dado; runLoad() cuida de UI genérica (botão, status, veil) pras duas rotas.   */
 /* ============================================================================ */
 
 const ROUTES = {
   'rmr': { pageId: 'page-rmr', title: 'RMR - Painel ao vivo', navSelector: '[data-route="rmr"]', load: atualizarDadosRmr },
+  'apv/overview': { pageId: 'page-apv-overview', title: 'APV — Visão Geral', navSelector: '[data-route="apv/overview"]', load: atualizarApvOverview },
   'apv/damage': { pageId: 'page-apv-damage', title: 'APV — Damage', navSelector: '[data-route="apv/damage"]', load: () => atualizarApvComponent('damage') },
   'apv/wash': { pageId: 'page-apv-wash', title: 'APV — Wash', navSelector: '[data-route="apv/wash"]', load: () => atualizarApvComponent('wash') },
   'apv/pod': { pageId: 'page-apv-pod', title: 'APV — POD', navSelector: '[data-route="apv/pod"]', load: () => atualizarApvComponent('pod') },

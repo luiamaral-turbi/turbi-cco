@@ -5,6 +5,10 @@ Painel ao vivo de Operações da Turbi. Site estático, sem backend próprio, se
 
 - **RMR** — os 3 indicadores centrais da Reunião Mensal de Resultados: **COGS (OPEX)**,
   **Indisponibilidade OPS** e **Claim/APV** (reclamação pós-viagem).
+- **APV → Visão Geral** — investigação cruzando Damage/Wash/POD: tendência semanal, idade do
+  carro, dias desde lavagem, categoria/modelo de veículo, produto, impacto na nota, ranking de POD
+  físico e quebra do bucket "Other". Endpoint `?endpoint=claim-overview`, live (recalcula por
+  período).
 - **APV → Damage / Wash / POD** — drill-down analítico dos 3 componentes de Claim/APV: Pareto de
   motivos em 2 níveis (grupo + tipo) e nuvem de palavras dos comentários, com filtro de período e
   cross-filter (clicar numa barra do Pareto filtra os outros gráficos da página). Mesmo padrão pros

@@ -57,6 +57,8 @@ function doGet(e) {
       data = getClaimApv(range.start, range.end, city);
     } else if (endpoint === 'claim-detail') {
       data = getClaimDetail(range.start, range.end, city, params.component);
+    } else if (endpoint === 'claim-overview') {
+      data = getClaimOverview(range.start, range.end);
     } else {
       data = { detail: 'endpoint inválido — use ?endpoint=indisponibilidade, ?endpoint=claim-apv ou ?endpoint=claim-detail' };
     }
@@ -472,6 +474,226 @@ function buildClaimDetailResponse_(component, startDate, endDate, rowsA, rowsB) 
 }
 
 /* -------------------------------------------------------------------------- */
+/* Claim/APV — Visão Geral (investigação cruzando os 3 componentes)          */
+/*                                                                              */
+/* Réplica do script de análise ad-hoc já validado contra BigQuery ao vivo    */
+/* (jan-ago/2026): idade do carro, modelo/categoria, produto, nota, ranking   */
+/* de POD físico, quebra do "Other" de Damage, e o achado de "Não             */
+/* classificado" fora do escopo dos 3 componentes. Grão: bookingId distinto   */
+/* (mesmo da fórmula oficial), exceto o achado de "Não classificado" que é    */
+/* por item (pergunta é sobre a taxonomia da view inteira, não por reserva).  */
+/* -------------------------------------------------------------------------- */
+
+/** CTE base — 1 linha por reserva avaliada, com flags has_damage/has_wash/has_pod. */
+function claimOverviewBaseCte_() {
+  return (
+    'WITH base AS (\n' +
+    '  SELECT\n' +
+    '    r.bookingId, r.dt_conclusao, r.review_item_category, r.ReviewItemLabel, r.ReviewItemName,\n' +
+    '    r.rate, r.vehicleModel, r.vehicleCategory, r.dias_idade_carro, r.dias_desde_ultima_lavagem,\n' +
+    '    r.bookingType, r.produto, r.podid, r.PodName, f.podCity AS PodCity\n' +
+    '  FROM `turbi-dc-ops.atendimento.vw_post_trip_review_por_item` r\n' +
+    '  LEFT JOIN (SELECT DISTINCT podid, podCity FROM `turbi-dc-ops.ops_geral.vw_frota_historico_contabil`) f\n' +
+    '    ON r.podid = f.podid\n' +
+    '  WHERE r.dt_conclusao BETWEEN @start_date AND @end_date\n' +
+    '),\n' +
+    'per_booking AS (\n' +
+    '  SELECT\n' +
+    '    bookingId,\n' +
+    '    ANY_VALUE(vehicleModel) AS vehicleModel, ANY_VALUE(vehicleCategory) AS vehicleCategory,\n' +
+    '    ANY_VALUE(dias_idade_carro) AS dias_idade_carro,\n' +
+    '    ANY_VALUE(dias_desde_ultima_lavagem) AS dias_desde_ultima_lavagem,\n' +
+    '    ANY_VALUE(bookingType) AS bookingType, ANY_VALUE(produto) AS produto,\n' +
+    '    ANY_VALUE(PodName) AS PodName, ANY_VALUE(PodCity) AS PodCity, ANY_VALUE(rate) AS rate,\n' +
+    '    MIN(dt_conclusao) AS dt_conclusao,\n' +
+    "    MAX(CASE WHEN review_item_category = 'Avarias no veículo' AND ReviewItemLabel != 'Cars' THEN 1 ELSE 0 END) AS has_damage,\n" +
+    "    MAX(CASE WHEN review_item_category = 'Limpeza e cheiro' THEN 1 ELSE 0 END) AS has_wash,\n" +
+    "    MAX(CASE WHEN review_item_category = 'Estacionamento' AND ReviewItemName != 'Vagas' THEN 1 ELSE 0 END) AS has_pod\n" +
+    '  FROM base\n' +
+    '  GROUP BY bookingId\n' +
+    ')\n'
+  );
+}
+
+function mapOverviewRateRow_(r) {
+  return { label: r.label, n: Number(r.n), damage: Number(r.damage), wash: Number(r.wash), pod: Number(r.pod) };
+}
+
+function getClaimOverview(startDate, endDate) {
+  var baseParams = [param_('start_date', 'DATE', startDate), param_('end_date', 'DATE', endDate)];
+  var cte = claimOverviewBaseCte_();
+
+  var baseline = runQuery_(
+    cte + 'SELECT COUNT(*) n, ROUND(100*AVG(has_damage),2) damage, ROUND(100*AVG(has_wash),2) wash, ROUND(100*AVG(has_pod),2) pod FROM per_booking',
+    baseParams
+  )[0];
+
+  var weeklyRows = runQuery_(
+    cte +
+      "SELECT FORMAT_DATE('%G-W%V', dt_conclusao) AS semana, ROUND(100*AVG(has_damage),2) damage, " +
+      'ROUND(100*AVG(has_wash),2) wash, ROUND(100*AVG(has_pod),2) pod ' +
+      'FROM per_booking GROUP BY semana ORDER BY semana',
+    baseParams
+  );
+
+  var byCategoryRows = runQuery_(
+    cte +
+      'SELECT vehicleCategory AS label, COUNT(*) n, ROUND(100*AVG(has_damage),2) damage, ' +
+      'ROUND(100*AVG(has_wash),2) wash, ROUND(100*AVG(has_pod),2) pod ' +
+      'FROM per_booking GROUP BY label HAVING n >= 30 ORDER BY damage DESC',
+    baseParams
+  );
+
+  var byModelRows = runQuery_(
+    cte +
+      'SELECT vehicleModel AS label, COUNT(*) n, ROUND(100*AVG(has_damage),2) damage, ' +
+      'ROUND(100*AVG(has_wash),2) wash, ROUND(100*AVG(has_pod),2) pod ' +
+      'FROM per_booking GROUP BY label HAVING n >= 50 ORDER BY damage DESC LIMIT 15',
+    baseParams
+  );
+
+  var byAgeRows = runQuery_(
+    cte +
+      "SELECT CASE WHEN dias_idade_carro IS NULL THEN 'sem dado' WHEN dias_idade_carro < 90 THEN '0-89'" +
+      " WHEN dias_idade_carro < 180 THEN '90-179' WHEN dias_idade_carro < 365 THEN '180-364'" +
+      " WHEN dias_idade_carro < 730 THEN '365-729' ELSE '730+' END AS label," +
+      ' COUNT(*) n, ROUND(100*AVG(has_damage),2) damage, ROUND(100*AVG(has_wash),2) wash, ROUND(100*AVG(has_pod),2) pod ' +
+      'FROM per_booking GROUP BY label ' +
+      "ORDER BY CASE label WHEN '0-89' THEN 1 WHEN '90-179' THEN 2 WHEN '180-364' THEN 3 WHEN '365-729' THEN 4 WHEN '730+' THEN 5 ELSE 6 END",
+    baseParams
+  );
+
+  var byWashDaysRows = runQuery_(
+    cte +
+      "SELECT CASE WHEN dias_desde_ultima_lavagem IS NULL THEN 'sem dado' WHEN dias_desde_ultima_lavagem < 3 THEN '0-2'" +
+      " WHEN dias_desde_ultima_lavagem < 7 THEN '3-6' WHEN dias_desde_ultima_lavagem < 15 THEN '7-14'" +
+      " WHEN dias_desde_ultima_lavagem < 30 THEN '15-29' ELSE '30+' END AS label," +
+      ' COUNT(*) n, ROUND(100*AVG(has_wash),2) wash, ROUND(100*AVG(has_damage),2) damage, 0 AS pod ' +
+      'FROM per_booking GROUP BY label ' +
+      "ORDER BY CASE label WHEN '0-2' THEN 1 WHEN '3-6' THEN 2 WHEN '7-14' THEN 3 WHEN '15-29' THEN 4 WHEN '30+' THEN 5 ELSE 6 END",
+    baseParams
+  );
+
+  var byProductRows = runQuery_(
+    cte +
+      'SELECT bookingType, produto, COUNT(*) n, ROUND(100*AVG(has_damage),2) damage, ' +
+      'ROUND(100*AVG(has_wash),2) wash, ROUND(100*AVG(has_pod),2) pod ' +
+      'FROM per_booking GROUP BY bookingType, produto HAVING n >= 20 ORDER BY n DESC LIMIT 20',
+    baseParams
+  );
+
+  var ratingRows = runQuery_(
+    cte +
+      "SELECT 'damage' AS componente, has_damage AS flag, ROUND(AVG(SAFE_CAST(rate AS FLOAT64)),2) AS nota " +
+      'FROM per_booking WHERE rate IS NOT NULL GROUP BY flag ' +
+      "UNION ALL SELECT 'wash', has_wash, ROUND(AVG(SAFE_CAST(rate AS FLOAT64)),2) " +
+      'FROM per_booking WHERE rate IS NOT NULL GROUP BY has_wash ' +
+      "UNION ALL SELECT 'pod', has_pod, ROUND(AVG(SAFE_CAST(rate AS FLOAT64)),2) " +
+      'FROM per_booking WHERE rate IS NOT NULL GROUP BY has_pod',
+    baseParams
+  );
+
+  var podRows = runQuery_(
+    cte +
+      'SELECT PodCity, PodName, COUNT(*) n, ROUND(100*AVG(has_damage),2) damage, ROUND(100*AVG(has_wash),2) wash, ' +
+      'ROUND(100*AVG(has_pod),2) pod, ROUND(100*AVG(GREATEST(has_damage,has_wash,has_pod)),2) any_rate ' +
+      'FROM per_booking GROUP BY PodCity, PodName HAVING n >= 20 ORDER BY any_rate DESC',
+    baseParams
+  );
+
+  // Quebra do "Other" de Damage — mesma tokenização/anonimização de getClaimDetail (query B),
+  // escopada só pra ReviewItemLabel='Other'. Nunca texto bruto sai do BigQuery.
+  var otherWordsSql =
+    'WITH scoped AS (\n' +
+    '  SELECT bookingId, PostTripReviewComment AS comentario\n' +
+    '  FROM `turbi-dc-ops.atendimento.vw_post_trip_review_por_item`\n' +
+    '  WHERE dt_conclusao BETWEEN @start_date AND @end_date\n' +
+    "    AND review_item_category = 'Avarias no veículo' AND ReviewItemLabel = 'Other'\n" +
+    '),\n' +
+    'comments AS (\n' +
+    '  SELECT DISTINCT bookingId, comentario FROM scoped\n' +
+    "  WHERE comentario IS NOT NULL AND TRIM(comentario) != ''\n" +
+    '),\n' +
+    'tokens AS (\n' +
+    '  SELECT word FROM comments,\n' +
+    '  UNNEST(REGEXP_EXTRACT_ALL(\n' +
+    "    REGEXP_REPLACE(NORMALIZE(LOWER(comentario), NFD), r'\\p{Mn}', ''),\n" +
+    "    r'[a-z0-9]+'\n" +
+    '  )) AS word\n' +
+    ')\n' +
+    'SELECT word, COUNT(*) AS n FROM tokens\n' +
+    'WHERE LENGTH(word) >= 4\n' +
+    '  AND word NOT IN (' + sqlStringList_(CLAIM_DETAIL_STOPWORDS_PT) + ')\n' +
+    'GROUP BY word HAVING n >= 5 ORDER BY n DESC LIMIT 20';
+  var otherWordsRows = runQuery_(otherWordsSql, baseParams);
+
+  // "Não classificado" — pergunta é sobre TODOS os itens da view no período, não só os 3
+  // componentes oficiais. Não usa a CTE per_booking (grão de item, de propósito).
+  var unclassifiedRow = runQuery_(
+    "SELECT COUNT(*) AS total, COUNTIF(review_item_category = 'Não classificado') AS unclassified " +
+      'FROM `turbi-dc-ops.atendimento.vw_post_trip_review_por_item` ' +
+      'WHERE dt_conclusao BETWEEN @start_date AND @end_date',
+    [param_('start_date', 'DATE', startDate), param_('end_date', 'DATE', endDate)]
+  )[0];
+
+  var ratingImpact = {};
+  ratingRows.forEach(function (r) {
+    if (!ratingImpact[r.componente]) ratingImpact[r.componente] = {};
+    ratingImpact[r.componente][Number(r.flag) ? 'com' : 'sem'] = Number(r.nota);
+  });
+
+  var podMapped = podRows.map(function (r) {
+    return {
+      podCity: r.PodCity,
+      podName: r.PodName,
+      n: Number(r.n),
+      damage: Number(r.damage),
+      wash: Number(r.wash),
+      pod: Number(r.pod),
+      any: Number(r.any_rate),
+    };
+  });
+
+  var totalUnclassified = Number(unclassifiedRow.unclassified);
+  var totalItems = Number(unclassifiedRow.total) || 1;
+
+  return {
+    start_date: startDate,
+    end_date: endDate,
+    baseline: { n: Number(baseline.n), damage: Number(baseline.damage), wash: Number(baseline.wash), pod: Number(baseline.pod) },
+    weekly: {
+      labels: weeklyRows.map(function (r) { return r.semana; }),
+      damage: weeklyRows.map(function (r) { return Number(r.damage); }),
+      wash: weeklyRows.map(function (r) { return Number(r.wash); }),
+      pod: weeklyRows.map(function (r) { return Number(r.pod); }),
+    },
+    byCategory: byCategoryRows.map(mapOverviewRateRow_),
+    byModel: byModelRows.map(mapOverviewRateRow_),
+    byAge: byAgeRows.map(mapOverviewRateRow_),
+    byWashDays: byWashDaysRows.map(function (r) {
+      return { label: r.label, n: Number(r.n), wash: Number(r.wash), damage: Number(r.damage) };
+    }),
+    byProduct: byProductRows.map(function (r) {
+      return {
+        bookingType: r.bookingType, produto: r.produto, n: Number(r.n),
+        damage: Number(r.damage), wash: Number(r.wash), pod: Number(r.pod),
+      };
+    }),
+    ratingImpact: ratingImpact,
+    podRanking: {
+      worst: podMapped.slice(0, 8),
+      best: podMapped.slice(-6).reverse(),
+    },
+    otherWords: otherWordsRows.map(function (r) { return { word: r.word, count: Number(r.n) }; }),
+    unclassified: {
+      total: totalItems,
+      unclassified: totalUnclassified,
+      pct: round2_((100 * totalUnclassified) / totalItems),
+    },
+  };
+}
+
+/* -------------------------------------------------------------------------- */
 /* Teste manual — rodar do editor do Apps Script antes de implantar           */
 /* -------------------------------------------------------------------------- */
 
@@ -485,4 +707,5 @@ function testeManual() {
   Logger.log('Claim detail wash: %s', JSON.stringify(getClaimDetail(range.start, range.end, null, 'wash')));
   Logger.log('Claim detail pod: %s', JSON.stringify(getClaimDetail(range.start, range.end, null, 'pod')));
   Logger.log('Claim detail componente inválido (esperado: detail de erro amigável): %s', JSON.stringify(getClaimDetail(range.start, range.end, null, 'foo')));
+  Logger.log('Claim overview: %s', JSON.stringify(getClaimOverview(range.start, range.end)));
 }

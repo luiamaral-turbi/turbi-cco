@@ -4,6 +4,22 @@ Formato: data + o que mudou e por quê. Foco em decisões de arquitetura e fórm
 substituto do histórico de commits do Git, é um resumo pensado pra quem for dar manutenção sem
 querer ler o diff inteiro.
 
+## 2026-08-23 — APV → Visão Geral: investigação viva cruzando Damage/Wash/POD
+
+- **Adicionado**: página **APV → Visão Geral** (nova entrada de menu, antes de Damage/Wash/POD),
+  novo endpoint `?endpoint=claim-overview` no `Code.gs` — 9 queries agregadas (grão de reserva
+  distinta, mesmo da fórmula oficial): tendência semanal, idade do carro, dias desde a última
+  lavagem, categoria/modelo de veículo, produto/tipo de reserva, impacto na nota de avaliação,
+  ranking de POD físico (normalizado por volume), quebra de palavras do bucket "Other" de Damage, e
+  a taxa de itens "Não classificado" na view inteira. Live de verdade — recalcula ao trocar o
+  período ou clicar em "Atualizar dados", não é retrato estático.
+- **Portado de uma análise ad-hoc já validada** (artifact "Raio-X do Claim", 2026-08-22) — mesma
+  metodologia, mesmas queries, agora expostas como parte permanente do painel em vez de relatório
+  pontual.
+- **2 gráficos novos reutilizáveis**: `trendLineChart` (múltiplas séries sobrepostas, ex.
+  Damage x Wash por semana) e `groupedBarChart` (barras lado a lado por categoria, ex. Damage x
+  Wash por faixa de idade) — nenhuma lib nova, mesmo padrão SVG do resto do painel.
+
 ## 2026-08-22 (3) — Wash e POD no mesmo padrão de drill-down do Damage
 
 - **Adicionado**: páginas **APV → Wash** e **APV → POD**, reaproveitando o endpoint
