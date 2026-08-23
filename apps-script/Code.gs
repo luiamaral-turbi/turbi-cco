@@ -54,7 +54,7 @@ function doGet(e) {
     if (endpoint === 'indisponibilidade') {
       data = getIndisponibilidade(range.start, range.end, city);
     } else if (endpoint === 'indisponibilidade-overview') {
-      data = getIndisponibilidadeOverview(range.start, range.end);
+      data = getIndisponibilidadeOverview(range.start, range.end, city);
     } else if (endpoint === 'claim-apv') {
       data = getClaimApv(range.start, range.end, city);
     } else if (endpoint === 'claim-detail') {
@@ -252,15 +252,63 @@ var INDISP_RESPONSAVEL_DEFAULT = 'Lucas Lopes + Ricardo Marguliano';
 // não achado).
 var INDISP_MIN_VEICULOS = 5;
 
-function indispOverviewBaseCte_() {
+// podCity já é coluna direta desta view (diferente da view de Claim, que precisa de join) —
+// filtro de cidade é só um AND a mais, sem join nenhum.
+function indispOverviewBaseCte_(city) {
   return (
     'WITH base AS (\n' +
     '  SELECT dt_result, status_ajustado, segundos_no_status, vsd_substatus, vehicleId,\n' +
     '    vehiclemodel, vehicleCategory, idade_carro, podid, podName, podCity\n' +
     '  FROM `turbi-dc-ops.ops_geral.vw_frota_historico_contabil`\n' +
     '  WHERE dt_result BETWEEN @start_date AND @end_date\n' +
+    (city ? '  AND podCity = @city\n' : '') +
     ')\n'
   );
+}
+
+/** Últimos 30 dias corridos (hoje-30 até ontem) — fixo, independente do período filtrado
+ * na tela. Mesma ideia de defaultRange_(), só que sempre 30 dias, nunca desde 1º de janeiro. */
+function last30dRange_() {
+  var today = new Date();
+  var yesterday = new Date(today.getTime() - 24 * 60 * 60 * 1000);
+  var start = new Date(today.getTime() - 30 * 24 * 60 * 60 * 1000);
+  return {
+    start: Utilities.formatDate(start, TIMEZONE, 'yyyy-MM-dd'),
+    end: Utilities.formatDate(yesterday, TIMEZONE, 'yyyy-MM-dd'),
+  };
+}
+
+/** Série de "Cálculo BQ direto" (mesma fórmula oficial) numa granularidade qualquer —
+ * `dateExprSql` decide se é por semana, por dia, etc. Usada tanto pra tendência semanal do
+ * período filtrado quanto pra "últimos 30 dias" (mesmo helper, dateExprSql diferente). */
+function indispBqDiretoSeries_(cte, dateExprSql, baseParams) {
+  var rows = runQuery_(
+    cte +
+      ', totals AS (\n' +
+      '  SELECT ' + dateExprSql + ' AS periodo, SUM(segundos_no_status) AS total_seg\n' +
+      '  FROM base GROUP BY periodo\n' +
+      '), cats AS (\n' +
+      '  SELECT ' + dateExprSql + ' AS periodo, status_ajustado, SUM(segundos_no_status) AS seg_cat\n' +
+      '  FROM base WHERE status_ajustado IN (' + INDISP_STATUS_LIST_SQL + ')\n' +
+      '  GROUP BY periodo, status_ajustado\n' +
+      ')\n' +
+      'SELECT t.periodo, t.total_seg, c.status_ajustado, c.seg_cat\n' +
+      'FROM totals t LEFT JOIN cats c ON t.periodo = c.periodo\n' +
+      'ORDER BY t.periodo',
+    baseParams
+  );
+  var totalSegByP = {}, segCatByPCat = {}, periods = [];
+  rows.forEach(function (r) {
+    if (totalSegByP[r.periodo] == null) { totalSegByP[r.periodo] = Number(r.total_seg); periods.push(r.periodo); }
+    if (r.status_ajustado) segCatByPCat[r.periodo + '|' + r.status_ajustado] = Number(r.seg_cat);
+  });
+  var bqDireto = periods.map(function (p) {
+    var totalSeg = totalSegByP[p] || 1;
+    var somaCats = 0;
+    CATEGORIAS.forEach(function (c) { somaCats += segCatByPCat[p + '|' + c.status] || 0; });
+    return round2_((100 * somaCats) / totalSeg);
+  });
+  return { labels: periods, bqDireto: bqDireto, totalSegByPeriod: totalSegByP, segCatByPeriodCat: segCatByPCat };
 }
 
 function categoriaByStatus_(status) {
@@ -303,42 +351,25 @@ function indispRateByDim_(cte, dimSql, baseParams) {
   });
 }
 
-function getIndisponibilidadeOverview(startDate, endDate) {
+function getIndisponibilidadeOverview(startDate, endDate, city) {
   var baseParams = [param_('start_date', 'DATE', startDate), param_('end_date', 'DATE', endDate)];
-  var cte = indispOverviewBaseCte_();
+  if (city) baseParams.push(param_('city', 'STRING', city));
+  var cte = indispOverviewBaseCte_(city);
 
-  // Tendência semanal (mesma lógica de total/categorias do getIndisponibilidade oficial,
-  // só que por semana em vez de por mês).
-  var weeklyRows = runQuery_(
-    cte +
-      ', totals AS (\n' +
-      "  SELECT FORMAT_DATE('%G-W%V', dt_result) AS semana, SUM(segundos_no_status) AS total_seg\n" +
-      '  FROM base GROUP BY semana\n' +
-      '), cats AS (\n' +
-      "  SELECT FORMAT_DATE('%G-W%V', dt_result) AS semana, status_ajustado, SUM(segundos_no_status) AS seg_cat\n" +
-      '  FROM base WHERE status_ajustado IN (' + INDISP_STATUS_LIST_SQL + ')\n' +
-      '  GROUP BY semana, status_ajustado\n' +
-      ')\n' +
-      'SELECT t.semana, t.total_seg, c.status_ajustado, c.seg_cat\n' +
-      'FROM totals t LEFT JOIN cats c ON t.semana = c.semana\n' +
-      'ORDER BY t.semana',
-    baseParams
-  );
+  // Tendência semanal do período filtrado (mesma lógica de total/categorias do
+  // getIndisponibilidade oficial, só que por semana em vez de por mês).
+  var weeklySeries = indispBqDiretoSeries_(cte, "FORMAT_DATE('%G-W%V', dt_result)", baseParams);
+  var weeks = weeklySeries.labels;
+  var weeklyBqDireto = weeklySeries.bqDireto;
+  var totalSegByWeek = weeklySeries.totalSegByPeriod;
+  var segCatByWeekCat = weeklySeries.segCatByPeriodCat;
 
-  var totalSegByWeek = {};
-  var segCatByWeekCat = {}; // "semana|status" -> seg
-  var weeks = [];
-  weeklyRows.forEach(function (r) {
-    if (totalSegByWeek[r.semana] == null) { totalSegByWeek[r.semana] = Number(r.total_seg); weeks.push(r.semana); }
-    if (r.status_ajustado) segCatByWeekCat[r.semana + '|' + r.status_ajustado] = Number(r.seg_cat);
-  });
-
-  var weeklyBqDireto = weeks.map(function (w) {
-    var totalSeg = totalSegByWeek[w] || 1;
-    var somaCats = 0;
-    CATEGORIAS.forEach(function (c) { somaCats += segCatByWeekCat[w + '|' + c.status] || 0; });
-    return round2_((100 * somaCats) / totalSeg);
-  });
+  // Últimos 30 dias corridos (janela fixa, independente do período filtrado na tela) —
+  // mesmo cálculo, granularidade diária, com seu próprio range/params.
+  var last30 = last30dRange_();
+  var baseParams30 = [param_('start_date', 'DATE', last30.start), param_('end_date', 'DATE', last30.end)];
+  if (city) baseParams30.push(param_('city', 'STRING', city));
+  var last30Series = indispBqDiretoSeries_(cte, "FORMAT_DATE('%Y-%m-%d', dt_result)", baseParams30);
 
   // Totais do período inteiro por categoria (soma das semanas) — base pra byCategory,
   // byResponsavel e conversão em carros-dia. total_seg do período = soma do total_seg de
@@ -413,8 +444,10 @@ function getIndisponibilidadeOverview(startDate, endDate) {
   return {
     start_date: startDate,
     end_date: endDate,
+    city: city || null,
     baseline: { bqDireto: bqDiretoPeriodo, totalSegPeriodo: totalSegPeriodo },
     weekly: { labels: weeks, bqDireto: weeklyBqDireto },
+    last30d: { labels: last30Series.labels, bqDireto: last30Series.bqDireto, start: last30.start, end: last30.end },
     byCategory: byCategory,
     byResponsavel: byResponsavel,
     substatusByCategory: substatusByCategory,
@@ -914,7 +947,14 @@ function testeManual() {
   var range = defaultRange_(null, null);
   Logger.log('Indisponibilidade nacional: %s', JSON.stringify(getIndisponibilidade(range.start, range.end, null)));
   Logger.log('Indisponibilidade Campinas: %s', JSON.stringify(getIndisponibilidade(range.start, range.end, 'Campinas')));
-  Logger.log('Indisponibilidade Visão Geral: %s', JSON.stringify(getIndisponibilidadeOverview(range.start, range.end)));
+  var ovNacional = getIndisponibilidadeOverview(range.start, range.end);
+  var ovCampinas = getIndisponibilidadeOverview(range.start, range.end, 'Campinas');
+  var oficialNacional = getIndisponibilidade(range.start, range.end, null);
+  var oficialCampinas = getIndisponibilidade(range.start, range.end, 'Campinas');
+  Logger.log('Indisponibilidade Visão Geral nacional: %s', JSON.stringify(ovNacional));
+  Logger.log('Indisponibilidade Visão Geral Campinas: %s', JSON.stringify(ovCampinas));
+  Logger.log('GUARDRAIL — YTD nacional (overview vs oficial): %s vs %s', ovNacional.baseline.bqDireto, oficialNacional.ytd_bq_direto);
+  Logger.log('GUARDRAIL — YTD Campinas (overview vs oficial): %s vs %s', ovCampinas.baseline.bqDireto, oficialCampinas.ytd_bq_direto);
   Logger.log('Claim/APV nacional: %s', JSON.stringify(getClaimApv(range.start, range.end, null)));
   Logger.log('Claim/APV Campinas: %s', JSON.stringify(getClaimApv(range.start, range.end, 'Campinas')));
   Logger.log('Claim detail damage: %s', JSON.stringify(getClaimDetail(range.start, range.end, null, 'damage')));

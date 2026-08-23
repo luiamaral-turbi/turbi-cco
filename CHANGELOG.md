@@ -4,6 +4,35 @@ Formato: data + o que mudou e por quê. Foco em decisões de arquitetura e fórm
 substituto do histórico de commits do Git, é um resumo pensado pra quem for dar manutenção sem
 querer ler o diff inteiro.
 
+## 2026-08-23 (3) — Indisponibilidade → Visão Geral: reconstrução 100% + tabelas da APV
+
+- **Rejeitado e refeito do zero**: a 1ª versão da Visão Geral de Indisponibilidade (hero de
+  "achado principal" + narrativa por seção + lista de priorização, no mesmo estilo do artifact
+  "Raio-X do Claim") foi considerada amadora e sem valor agregado. Pedido explícito: reaproveitar
+  os componentes já validados da aba RMR (hero cards, `lineBarChart` com meta, `stackedChart`,
+  heatmap) em vez de um tratamento editorial — abandonada a narrativa automática **só nesta
+  página** (a APV manteve o formato, que não foi criticado nesse ponto).
+- **Causa raiz real encontrada nas tabelas da APV** (não só gosto): todas as `<table>` novas das
+  duas páginas Visão Geral tinham esquecido a classe `dtbl`/`cogswide` de que o CSS do site inteiro
+  depende — sem ela, o navegador renderiza com estilo cru padrão. Corrigido em todas as 6 tabelas
+  da APV, com cor condicional (`cc-good`/`cc-bad`) vs. a taxa geral do período.
+- **Indisponibilidade — estrutura nova**: hero cards (mês/semana mais recente, YTD do período,
+  pior semana) → evolução semanal (`lineBarChart` + meta) → **últimos 30 dias corridos** (janela
+  fixa hoje-30..ontem, independente do filtro de período da tela — pensado pra ver tendência
+  recente) → por categoria (`stackedChart` + tabela com heatmap) → top modelos → por categoria de
+  veículo → ranking de POD físico → Pareto de sub-motivo (mantido, nacional). Removidos: hero de
+  achado narrativo, frases automáticas por seção, lista de priorização, seção "por responsável".
+- **Quebra Geral/Campinas em TODAS as seções**, replicando o padrão `.campinas-block` que a aba
+  RMR já usa — `getIndisponibilidadeOverview(startDate, endDate, city)` ganhou parâmetro `city`
+  opcional (mesmo padrão de `getIndisponibilidade()`; a view já tem `podCity` como coluna direta,
+  sem precisar de join). O front-end chama o endpoint 2x por carregamento (sem cidade + Campinas),
+  em paralelo via `Promise.all`.
+- Novo helper `metaParaData_()` no front-end: resolve, pra um rótulo diário ou semana ISO
+  (`FORMAT_DATE('%G-W%V')`), o mês correspondente e repete a meta mensal nesse ponto mais granular
+  — usa a mesma regra ISO-8601 do BigQuery (semana pertence ao mês da sua quinta-feira).
+- `testeManual()` ganhou um recálculo independente do YTD nacional e de Campinas comparado contra
+  `getIndisponibilidade()` — guardrail de novo validado antes de reimplantar, não só prometido.
+
 ## 2026-08-23 (2) — Indisponibilidade → Visão Geral (100% aditiva, guardrail testado)
 
 - **Adicionado**: página **Indisponibilidade → Visão Geral** (menu lateral, agora antes de APV),
