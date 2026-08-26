@@ -65,10 +65,27 @@ function doGet(e) {
   // como arquivo HTML dentro deste projeto Apps Script). Com ?endpoint= → API JSON, igual sempre
   // foi. As duas coisas convivem na mesma implantação; a diferença de acesso público x
   // restrito a @turbi.com.br fica na implantação (Nova implantação → Acesso), não no código.
+  //
+  // O conteúdo vai em base64 dentro de um wrapper mínimo, reconstruído no navegador via
+  // atob()+TextDecoder — não serve o HTML direto. Achado ao vivo: o pipeline de renderização do
+  // HtmlService (IFRAME sandbox) corrompe o texto em pontos que mudam de posição a cada edição
+  // (já vimos "Sheets", depois "Linha", depois "Meta" quebrarem um de cada vez, sempre um
+  // SyntaxError tipo "Unexpected identifier" em algum ponto do arquivo) — não é um caractere
+  // específico corrigível, parece ser posição/tamanho-dependente. Base64 usa só [A-Za-z0-9+/=],
+  // um alfabeto que não dá pra esse tipo de corrupção acontecer, então contorna o problema sem
+  // precisar entender a causa exata do lado do Google.
   if (!endpoint) {
-    return HtmlService.createHtmlOutputFromFile('index')
-      .setTitle('RMR - Painel ao vivo')
-      .addMetaTag('viewport', 'width=device-width, initial-scale=1');
+    var pageContent = HtmlService.createHtmlOutputFromFile('index').getContent();
+    var b64 = Utilities.base64Encode(pageContent, Utilities.Charset.UTF_8);
+    var wrapper =
+      '<!doctype html><html><head><meta name="viewport" content="width=device-width, initial-scale=1"></head><body>' +
+      '<script>' +
+      'var b64=' + JSON.stringify(b64) + ';' +
+      'var bytes=Uint8Array.from(atob(b64),function(c){return c.charCodeAt(0);});' +
+      'var html=new TextDecoder("utf-8").decode(bytes);' +
+      'document.open();document.write(html);document.close();' +
+      '</script></body></html>';
+    return HtmlService.createHtmlOutput(wrapper).setTitle('RMR - Painel ao vivo');
   }
 
   try {

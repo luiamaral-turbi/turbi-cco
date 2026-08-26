@@ -4,6 +4,24 @@ Formato: data + o que mudou e por quê. Foco em decisões de arquitetura e fórm
 substituto do histórico de commits do Git, é um resumo pensado pra quem for dar manutenção sem
 querer ler o diff inteiro.
 
+## 2026-08-26 (7) — Fix definitivo: servir a página via base64 (contorna a corrupção de vez)
+
+- A varredura de aspas duplas (entrada 6) não resolveu — o mesmo tipo de erro reapareceu numa
+  TERCEIRA palavra diferente ("Meta", numa linha sem nenhuma aspa dupla), provando que o padrão
+  não era "aspas dentro de crase" e sim algo dependente de posição/tamanho no pipeline de
+  renderização do `HtmlService` (cada correção mudava o tamanho do arquivo o suficiente pra
+  empurrar o ponto de corrupção pra outro lugar).
+- **Solução estrutural**, sem precisar entender a causa exata do lado do Google:
+  `doGet()` agora, sem `?endpoint=`, lê o conteúdo de `index` via `getContent()`, converte pra
+  **base64** (`Utilities.base64Encode(..., Utilities.Charset.UTF_8)`) e devolve um wrapper HTML
+  mínimo que faz `atob()` + `TextDecoder('utf-8')` + `document.write()` no navegador pra
+  reconstruir a página real. Base64 usa só `[A-Za-z0-9+/=]` — um alfabeto que não permite esse
+  tipo de corrupção acontecer, então contorna o bug em vez de caçar cada ocorrência.
+- **Validado antes de tocar em produção**: testado pelo endpoint `/dev` do projeto (autenticado via
+  token OAuth do `clasp`, sem passar pelas implantações reais), decodificado o base64 manualmente e
+  confirmado que reproduz o arquivo original perfeito, sem nenhuma corrupção, do início ao fim.
+- Reimplantado nas duas implantações (pública e logada) com a checagem de acesso de sempre.
+
 ## 2026-08-26 (6) — Varredura completa: zero aspas duplas dentro de crase no arquivo inteiro
 
 - Depois de corrigir "Sheets" (entrada 3) e ver o mesmo tipo de erro reaparecer em outro ponto
