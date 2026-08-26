@@ -4,6 +4,31 @@ Formato: data + o que mudou e por quê. Foco em decisões de arquitetura e fórm
 substituto do histórico de commits do Git, é um resumo pensado pra quem for dar manutenção sem
 querer ler o diff inteiro.
 
+## 2026-08-26 (4) — `onclick`/`onchange` inline não funcionam na versão logada (Apps Script)
+
+- **Sintoma, depois de já ter corrigido o bug de sintaxe da entrada anterior**: nenhum erro de
+  sintaxe no console, mas `Uncaught ReferenceError: atualizarPaginaAtiva is not defined at
+  HTMLButtonElement.onclick` ao clicar em "Atualizar dados" — só na versão logada (Apps Script),
+  nunca no GitHub Pages. Confirmei via `curl` na implantação pública (que roda o mesmo código, sem
+  precisar de login pra testar) que o conteúdo servido está completo e correto — `initRouter()`
+  chega inteiro até o fim do arquivo, não é truncamento.
+- **Causa raiz**: `HtmlService` do Apps Script serve a página dentro de um iframe sandbox do
+  Google (confirmado via `curl` — a resposta do `doGet()` sem `?endpoint=` é uma página de
+  bootstrap do próprio Google que monta um iframe com nosso conteúdo, não o HTML puro). Nesse
+  ambiente, atributos inline `onclick="..."`/`onchange="..."` no HTML não resolvem a função no
+  escopo esperado (o `<script>` roda e define as funções normalmente — por isso o resto do site
+  funciona —, mas o atributo inline nativo do DOM não enxerga esse escopo). Atributo inline nunca
+  deu problema no GitHub Pages porque ali o HTML é servido puro, sem esse wrapper.
+- **Correção**: removidos TODOS os 15 usos de `onclick="..."`/`onchange="..."` inline no HTML —
+  trocados por `addEventListener` registrado em bloco no fim do `<script>`, mesmo padrão que já
+  era usado (com sucesso, inclusive na versão logada) pros botões do menu lateral (colapsar sidebar,
+  abrir/fechar drawer mobile). Afeta: botão "Atualizar dados", os 8 seletores de período (RMR
+  Indisponibilidade/APV Visão Geral/Damage/Wash/POD), o seletor de categoria do Pareto de
+  sub-motivo, e os 3 botões "Limpar filtro de grupo" do drill-down de Claim.
+- **Lição pra qualquer HTML novo neste projeto**: nunca usar `onclick=`/`onchange=` inline daqui
+  pra frente — sempre `id` + `addEventListener`, já que o site agora roda em dois ambientes
+  (GitHub Pages puro e Apps Script HtmlService) e só o segundo tem essa restrição.
+
 ## 2026-08-26 (3) — Bug de copiar/colar na versão logada + migração pra deploy via `clasp`
 
 - **Sintoma**: versão logada (@turbi.com.br) abria em branco, botão "Atualizar dados" não reagia a

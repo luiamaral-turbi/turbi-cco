@@ -252,7 +252,7 @@
         <div class="status-row">
           <span id="status-msg"></span>
           <span id="last-update">nunca atualizado</span>
-          <button id="refresh-btn" onclick="atualizarPaginaAtiva()">🔄 Atualizar dados</button>
+          <button id="refresh-btn">🔄 Atualizar dados</button>
         </div>
       </div>
     </div>
@@ -357,8 +357,8 @@
     <p class="sec-owner">Mesmas 12 categorias certificadas da aba RMR — tendência semanal, últimos 30 dias corridos, ranking de POD físico, modelo e categoria de veículo, sempre com quebra Geral/Campinas. Nunca altera <code>getIndisponibilidade()</code>.</p>
 
     <div class="card filter-row" style="margin-bottom:20px">
-      <label>Período — De: <select id="indisp-overview-start" onchange="loadIndispOverview()"></select></label>
-      <label>Até: <select id="indisp-overview-end" onchange="loadIndispOverview()"></select></label>
+      <label>Período — De: <select id="indisp-overview-start"></select></label>
+      <label>Até: <select id="indisp-overview-end"></select></label>
     </div>
 
     <div class="hero-row" id="indisp-overview-heroes">
@@ -422,7 +422,7 @@
       <h3 class="ov-title">Sub-motivo dentro de uma categoria</h3>
       <p class="ov-finding-line">Escolha uma categoria pra abrir o status×substatus por trás dela (campo já existente na mesma view, mesmo grão — não precisou de outra fonte). Nacional, sem quebra por cidade.</p>
       <div class="card filter-row" style="margin-bottom:14px">
-        <label>Categoria: <select id="indisp-overview-category-select" onchange="renderIndispOverviewSubstatus()"></select></label>
+        <label>Categoria: <select id="indisp-overview-category-select"></select></label>
       </div>
       <div class="card"><div id="c-indispOverviewSubstatus"></div></div>
     </div>
@@ -438,8 +438,8 @@
     <p class="sec-owner">Investigação cruzando Damage, Wash e POD — mesmo grão de reserva distinta da fórmula oficial. Recalcula ao trocar o período.</p>
 
     <div class="card filter-row" style="margin-bottom:20px">
-      <label>Período — De: <select id="apv-overview-start" onchange="loadApvOverview()"></select></label>
-      <label>Até: <select id="apv-overview-end" onchange="loadApvOverview()"></select></label>
+      <label>Período — De: <select id="apv-overview-start"></select></label>
+      <label>Até: <select id="apv-overview-end"></select></label>
     </div>
 
     <div class="ov-finding-hero" id="apv-ov-hero"><div class="lbl">Carregando…</div><div class="headline">—</div></div>
@@ -540,9 +540,9 @@
 
     <div class="subhead">Período <span class="sub-note">controla todos os gráficos desta página</span></div>
     <div class="card filter-row">
-      <label>De: <select id="apv-damage-start" onchange="loadApvComponent('damage')"></select></label>
-      <label>Até: <select id="apv-damage-end" onchange="loadApvComponent('damage')"></select></label>
-      <button id="apv-damage-clear-filter" onclick="clearApvComponentGroupFilter('damage')" style="display:none">✕ Limpar filtro de grupo</button>
+      <label>De: <select id="apv-damage-start"></select></label>
+      <label>Até: <select id="apv-damage-end"></select></label>
+      <button id="apv-damage-clear-filter" style="display:none">✕ Limpar filtro de grupo</button>
     </div>
 
     <div class="subhead">Pareto — por grupo <span class="sub-note">clique numa barra pra filtrar os gráficos abaixo · contagem por item reportado, uma reclamação pode ter mais de um item (não bate 1:1 com o % de Damage do painel RMR, que conta reservas distintas)</span></div>
@@ -566,9 +566,9 @@
 
     <div class="subhead">Período <span class="sub-note">controla todos os gráficos desta página</span></div>
     <div class="card filter-row">
-      <label>De: <select id="apv-wash-start" onchange="loadApvComponent('wash')"></select></label>
-      <label>Até: <select id="apv-wash-end" onchange="loadApvComponent('wash')"></select></label>
-      <button id="apv-wash-clear-filter" onclick="clearApvComponentGroupFilter('wash')" style="display:none">✕ Limpar filtro de grupo</button>
+      <label>De: <select id="apv-wash-start"></select></label>
+      <label>Até: <select id="apv-wash-end"></select></label>
+      <button id="apv-wash-clear-filter" style="display:none">✕ Limpar filtro de grupo</button>
     </div>
 
     <div class="subhead">Pareto — por grupo <span class="sub-note">clique numa barra pra filtrar os gráficos abaixo · Wash tem 1 grupo só na taxonomia oficial ("Limpeza e cheiro") — o Pareto útil aqui é o de tipo, abaixo</span></div>
@@ -592,9 +592,9 @@
 
     <div class="subhead">Período <span class="sub-note">controla todos os gráficos desta página</span></div>
     <div class="card filter-row">
-      <label>De: <select id="apv-pod-start" onchange="loadApvComponent('pod')"></select></label>
-      <label>Até: <select id="apv-pod-end" onchange="loadApvComponent('pod')"></select></label>
-      <button id="apv-pod-clear-filter" onclick="clearApvComponentGroupFilter('pod')" style="display:none">✕ Limpar filtro de grupo</button>
+      <label>De: <select id="apv-pod-start"></select></label>
+      <label>Até: <select id="apv-pod-end"></select></label>
+      <button id="apv-pod-clear-filter" style="display:none">✕ Limpar filtro de grupo</button>
     </div>
 
     <div class="subhead">Pareto — por grupo <span class="sub-note">clique numa barra pra filtrar os gráficos abaixo</span></div>
@@ -1899,6 +1899,29 @@ document.getElementById('sidebar-toggle').addEventListener('click', toggleSideba
 document.getElementById('mobile-menu-btn').addEventListener('click', openMobileSidebar);
 document.getElementById('mobile-sidebar-close').addEventListener('click', closeMobileSidebar);
 document.getElementById('sidebar-backdrop').addEventListener('click', closeMobileSidebar);
+
+// Botões/selects que antes usavam onclick=".../onchange="..." inline — trocado por
+// addEventListener porque o atributo inline HTML não resolve a função no escopo certo quando
+// a página é servida via HtmlService do Apps Script (funciona normal no GitHub Pages, mas dá
+// "ReferenceError: ... is not defined" na versão logada — mesmo padrão já usado acima pro
+// menu lateral, só que agora pra todos os controles do site).
+[
+  ['refresh-btn', 'click', atualizarPaginaAtiva],
+  ['indisp-overview-start', 'change', loadIndispOverview],
+  ['indisp-overview-end', 'change', loadIndispOverview],
+  ['indisp-overview-category-select', 'change', renderIndispOverviewSubstatus],
+  ['apv-overview-start', 'change', loadApvOverview],
+  ['apv-overview-end', 'change', loadApvOverview],
+  ['apv-damage-start', 'change', () => loadApvComponent('damage')],
+  ['apv-damage-end', 'change', () => loadApvComponent('damage')],
+  ['apv-damage-clear-filter', 'click', () => clearApvComponentGroupFilter('damage')],
+  ['apv-wash-start', 'change', () => loadApvComponent('wash')],
+  ['apv-wash-end', 'change', () => loadApvComponent('wash')],
+  ['apv-wash-clear-filter', 'click', () => clearApvComponentGroupFilter('wash')],
+  ['apv-pod-start', 'change', () => loadApvComponent('pod')],
+  ['apv-pod-end', 'change', () => loadApvComponent('pod')],
+  ['apv-pod-clear-filter', 'click', () => clearApvComponentGroupFilter('pod')],
+].forEach(([id, evt, fn]) => document.getElementById(id).addEventListener(evt, fn));
 
 function initRouter(){
   initSidebarState();
