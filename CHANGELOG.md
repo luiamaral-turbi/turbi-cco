@@ -4,6 +4,18 @@ Formato: data + o que mudou e por quê. Foco em decisões de arquitetura e fórm
 substituto do histórico de commits do Git, é um resumo pensado pra quem for dar manutenção sem
 querer ler o diff inteiro.
 
+## 2026-08-26 (9) — Fix da casca: `location.href` não é a URL real dentro do iframe do Apps Script
+
+- A casca mínima (entrada 8) carregava mas o `fetch(?endpoint=page-content)` voltava
+  `Unexpected token '<', "<!doctype "... is not valid JSON` — o `fetch()` estava batendo numa
+  página HTML (não no JSON esperado). Causa: dentro do iframe que o `HtmlService` usa pra servir a
+  página, `location.href` não é a URL real do Web App (`.../exec`) — é uma URL interna
+  `*.googleusercontent.com`. Montar o fetch a partir de `location.href.split("?")[0]` batia num
+  lugar errado.
+- **Correção**: a URL correta agora vem do servidor via `ScriptApp.getService().getUrl()` (sempre
+  aponta pra implantação que está de fato respondendo a requisição atual), embutida como literal
+  na casca HTML em vez de calculada no navegador.
+
 ## 2026-08-26 (8) — Causa raiz REAL encontrada e corrigida: HtmlService corta linha no primeiro `//`
 
 - A tentativa de base64 (entrada 7) também falhou com o mesmo sintoma. Comparando **byte a byte**

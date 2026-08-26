@@ -78,11 +78,17 @@ function doGet(e) {
   // tocada por HtmlService) — só essa casca minúscula passa por HtmlService, pequena o bastante
   // pra nunca esbarrar no bug.
   if (!endpoint) {
+    // location.href, dentro do iframe que o HtmlService usa pra servir a página, NÃO é a URL
+    // real do Web App (é uma URL interna googleusercontent.com) — usar isso pra montar o fetch()
+    // batia no lugar errado e voltava uma página HTML de login em vez do JSON. A URL certa vem
+    // do próprio servidor via ScriptApp.getService().getUrl(), que sempre aponta pra implantação
+    // que está de fato respondendo esta requisição.
+    var selfUrl = ScriptApp.getService().getUrl();
     var bootstrap =
       '<!doctype html><html><head><meta name="viewport" content="width=device-width, initial-scale=1">' +
       '<title>RMR - Painel ao vivo</title></head><body>' +
       '<script>' +
-      'fetch(location.href.split("?")[0] + "?endpoint=page-content")' +
+      'fetch(' + JSON.stringify(selfUrl) + ' + "?endpoint=page-content")' +
       '.then(function(r){return r.json();})' +
       '.then(function(d){document.open();document.write(d.html);document.close();})' +
       '.catch(function(e){document.body.textContent="Falha ao carregar a pagina: " + e.message;});' +
