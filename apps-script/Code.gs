@@ -1,6 +1,11 @@
 /**
- * RMR OPS — Web App que expõe Indisponibilidade e Claim/APV (BigQuery) como JSON, e (desde
- * 2026-08-26) também serve a própria página via HtmlService — ver doGet() e IndexHtml.gs.
+ * RMR OPS — Web App que expõe Indisponibilidade e Claim/APV (BigQuery) como JSON. API pura —
+ * ver `CHANGELOG.md` (2026-08-26) pro histórico de uma tentativa de também servir a própria
+ * página por aqui (hospedagem logada @turbi.com.br), revertida por ora: o `HtmlService` do Apps
+ * Script se mostrou instável pra servir HTML grande/complexo como resposta de Web App (cortava
+ * linha no primeiro `//`, e depois o `google.script.run` esbarrava em CORS entre formatos de
+ * URL) — decisão foi voltar ao estado simples e confiável (só API) e desenhar a hospedagem
+ * logada de novo, com calma, numa rodada futura.
  *
  * Réplica exata das fórmulas já validadas em:
  *   Claudinho/Turbi/Reuniao De Resultados - OPS/automacao/backend/queries/indisponibilidade.py
@@ -8,24 +13,9 @@
  *
  * Requisitos antes de implantar:
  *   1. No editor do Apps Script: Serviços (+) → adicionar "BigQuery API" (serviço avançado).
- *   2. A página é servida a partir da constante `INDEX_HTML_CONTENT`, definida no arquivo
- *      `IndexHtml.gs` — **nunca** como arquivo `.html` do projeto (achado ao vivo: Apps Script
- *      processa arquivo `.html` como "template" e corta qualquer linha no primeiro `//` que
- *      encontrar, mesmo dentro de uma URL — corrompe o JS de forma silenciosa). `IndexHtml.gs` é
- *      gerado automaticamente pelo `clasp push` (ver README.md) a partir do `index.html` da raiz
- *      do repo — nunca editar esse arquivo `.gs` direto, ele é sobrescrito a cada push.
- *   3. Existem 2 implantações desta MESMA base de código, com URLs e acessos diferentes:
- *      - **Pública (existente)**: Implantar → Gerenciar implantações → implantação já ativa,
- *        Executar como "Eu", Acesso "Qualquer pessoa". Usada hoje pelo GitHub Pages (só como API
- *        — ninguém visita essa URL direto pra ver a página).
- *      - **Login @turbi.com.br (nova)**: Implantar → **Nova implantação** (não "gerenciar" a
- *        existente — precisa ser implantação nova pra ganhar URL própria), Executar como "Eu",
- *        Acesso "Qualquer pessoa dentro de turbi.com.br". Essa é a URL pra usar no lugar do
- *        GitHub Pages — exige login Google da conta corporativa antes de mostrar qualquer coisa.
- *        Os dados continuam vindo da implantação pública de sempre (a página usa a mesma
- *        constante `APPS_SCRIPT_URL` de sempre no `index.html` — só a página em si fica atrás
- *        do login, não a API).
- *   4. Na primeira execução, autorizar com a conta lui.amaral@turbi.com.br (mesma conta que já lê
+ *   2. Implantar → Gerenciar implantações → implantação ativa → Executar como "Eu" → Acesso
+ *      "Qualquer pessoa". Usada pelo GitHub Pages (que serve a página estática de verdade).
+ *   3. Na primeira execução, autorizar com a conta lui.amaral@turbi.com.br (mesma conta que já lê
  *      turbi-dc-ops via gcloud) — não precisa de service account nem credencial nova.
  *
  * Importante: ContentService sempre responde HTTP 200, mesmo em erro — por isso todo erro vem
@@ -62,46 +52,13 @@ var CATEGORIAS = [
 
 function doGet(e) {
   var params = (e && e.parameter) || {};
-  var endpoint = params.endpoint;
-
-  // Sem ?endpoint= → serve uma página-ninho minúscula e estática (hardcoded aqui, poucas linhas)
-  // que busca o conteúdo real via google.script.run e escreve na página com document.write().
-  // CAUSA RAIZ #1 (2026-08-26): QUALQUER uso de HtmlService pra montar a resposta do Web App —
-  // `createHtmlOutputFromFile('index')` OU `createHtmlOutput(string)` — corta silenciosamente
-  // qualquer linha no primeiro `//` que encontra, mesmo dentro de uma string/URL (ex.
-  // `https://docs.google.com/...` virava só `https:`), quebrando a sintaxe do JS a partir dali
-  // num ponto que muda a cada edição. `ContentService` nunca teve esse problema — por isso a
-  // página REAL vem de `INDEX_HTML_CONTENT` (`IndexHtml.gs`, string pura, nunca tocada por
-  // HtmlService), só essa casca minúscula passa por HtmlService.
-  // CAUSA RAIZ #2 (mesmo dia): usar `fetch()` daqui pra buscar o conteúdo (via `?endpoint=
-  // page-content`) dava "Failed to fetch" — `ScriptApp.getService().getUrl()` devolve um formato
-  // de URL (`/a/turbi.com.br/macros/s/...`) que, embora funcione se acessado direto, o navegador
-  // trata como origem DIFERENTE da URL que a página foi carregada (`/a/macros/turbi.com.br/s/...`
-  // — ordem dos segmentos trocada), e bloqueia o fetch entre as duas por CORS. `location.href`
-  // também não serve (é uma URL interna googleusercontent.com do iframe sandbox, não a real).
-  // Solução: `google.script.run`, a API nativa do Apps Script pra chamar função de servidor a
-  // partir de uma página HtmlService — não depende de montar nenhuma URL, funciona sempre.
-  if (!endpoint) {
-    var bootstrap =
-      '<!doctype html><html><head><meta name="viewport" content="width=device-width, initial-scale=1">' +
-      '<title>RMR - Painel ao vivo</title></head><body>' +
-      '<script>' +
-      'google.script.run' +
-      '.withSuccessHandler(function(html){document.open();document.write(html);document.close();})' +
-      '.withFailureHandler(function(err){document.body.textContent="Falha ao carregar a pagina: " + err.message;})' +
-      '.getPageContent_();' +
-      '</script></body></html>';
-    return HtmlService.createHtmlOutput(bootstrap).setTitle('RMR - Painel ao vivo');
-  }
-
   try {
+    var endpoint = params.endpoint;
     var range = defaultRange_(params.start_date, params.end_date);
     var city = params.city || null;
 
     var data;
-    if (endpoint === 'page-content') {
-      data = { html: INDEX_HTML_CONTENT };
-    } else if (endpoint === 'indisponibilidade') {
+    if (endpoint === 'indisponibilidade') {
       data = getIndisponibilidade(range.start, range.end, city);
     } else if (endpoint === 'indisponibilidade-overview') {
       data = getIndisponibilidadeOverview(range.start, range.end, city);
@@ -122,13 +79,6 @@ function doGet(e) {
 
 function jsonOutput_(obj) {
   return ContentService.createTextOutput(JSON.stringify(obj)).setMimeType(ContentService.MimeType.JSON);
-}
-
-/** Chamada via google.script.run pela casca de doGet() — devolve INDEX_HTML_CONTENT puro
- * (string de IndexHtml.gs, nunca tocada por HtmlService). O `?endpoint=page-content` continua
- * existindo em paralelo só pra eu conseguir validar via curl fora do navegador. */
-function getPageContent_() {
-  return INDEX_HTML_CONTENT;
 }
 
 /** Mesma regra do _default_range() do FastAPI: 1º de janeiro do ano corrente até ontem. */

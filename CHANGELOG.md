@@ -4,6 +4,27 @@ Formato: data + o que mudou e por quê. Foco em decisões de arquitetura e fórm
 substituto do histórico de commits do Git, é um resumo pensado pra quem for dar manutenção sem
 querer ler o diff inteiro.
 
+## 2026-08-26 (11) — Revertida a hospedagem logada: volta pra API pura, GitHub Pages intacto
+
+- Depois de 6 rodadas de correção na mesma tentativa (entradas 3 a 10 abaixo — bug de comentário
+  cortado, `google.script.run` vs `fetch()`, implantação duplicada por engano) e sem uma versão
+  finalmente confirmada funcionando pelo Lui, decisão: **parar de tentar servir a página pelo Apps
+  Script por agora** e voltar pro estado simples e comprovadamente estável — só a API.
+- `doGet()` voltou a ser exatamente o que era antes de 2026-08-26: recebe `?endpoint=...`, devolve
+  JSON via `ContentService`, sem nenhum branch de "servir página". Removidas as funções
+  `getPageContent_()` e a dependência de `IndexHtml.gs`/`INDEX_HTML_CONTENT`.
+- **As 3 implantações do projeto** (pública + as 2 "logadas" criadas durante a tentativa, uma delas
+  por engano) foram todas reimplantadas com esse código revertido — nenhuma delas serve mais
+  página nenhuma, todas respondem só `{"detail":"endpoint inválido..."}` se acessadas sem
+  `?endpoint=`. Evita deixar qualquer URL com o bug antigo no ar.
+- **Confirmado**: a implantação pública (única que o GitHub Pages depende) segue respondendo JSON
+  normalmente em todos os endpoints, validado por `curl` depois do revert.
+- A tentativa de hospedagem com login @turbi.com.br fica pausada — todo o histórico da
+  investigação (causas raiz reais encontradas: `HtmlService` corta linha no `//`, e depois
+  `google.script.run` era necessário no lugar de `fetch()` por causa de CORS entre formatos de
+  URL) continua registrado nas entradas abaixo, pra não perder o aprendizado numa eventual
+  retomada — mas nenhuma dessas soluções está ativa no código agora.
+
 ## 2026-08-26 (10) — Fix real da casca: `google.script.run` em vez de `fetch()`
 
 - O fix anterior (`ScriptApp.getService().getUrl()`) ainda dava `Failed to fetch`. Causa: o
