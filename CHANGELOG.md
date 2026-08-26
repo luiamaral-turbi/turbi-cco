@@ -4,6 +4,29 @@ Formato: data + o que mudou e por quê. Foco em decisões de arquitetura e fórm
 substituto do histórico de commits do Git, é um resumo pensado pra quem for dar manutenção sem
 querer ler o diff inteiro.
 
+## 2026-08-26 (2) — Segunda via de hospedagem: Apps Script com login @turbi.com.br
+
+- **Pedido**: migrar do GitHub Pages (público, sem login) pra hospedagem no próprio Google Apps
+  Script, "pra ficar logado" — restringir o acesso ao painel a contas @turbi.com.br.
+- **Decisão de arquitetura**: em vez de substituir o GitHub Pages, `doGet()` em `Code.gs` ganhou um
+  branch novo — sem `?endpoint=` na URL, serve a própria página via
+  `HtmlService.createHtmlOutputFromFile('index')`; com `?endpoint=`, continua exatamente a API JSON
+  de sempre. O arquivo `index` colado dentro do projeto Apps Script é o MESMO `index.html` deste
+  repo, sem edição nenhuma — a página usa a constante `APPS_SCRIPT_URL` de sempre pra buscar dado,
+  então funciona igual não importa qual URL a serviu.
+- **Duas implantações do mesmo script, acessos diferentes** (não dá pra ter os dois níveis de acesso
+  numa implantação só): a implantação pública existente ("Qualquer pessoa") não muda — continua
+  sendo a fonte de dados do GitHub Pages, que fica no ar sem alteração até o Lui validar a versão
+  nova. Uma implantação NOVA ("Qualquer pessoa dentro de turbi.com.br") passa a servir a página
+  logada — mesmo código, URL própria. Ver `README.md` pro passo a passo completo de configuração
+  (precisa ser feito manualmente no editor do Apps Script, como sempre).
+- **Por que a API continua pública mesmo na versão logada**: a página logada busca dado na MESMA
+  implantação pública de sempre (não na implantação restrita) — evita qualquer incerteza sobre se
+  um `fetch()` carrega a sessão do Google corretamente pra uma implantação com acesso restrito
+  (ponto que já tinha gerado confusão numa migração anterior, ver entrada de 2026-08-21/22). Só o
+  carregamento da página em si (navegação de topo, não fetch) passa pelo login real do Google.
+- Sem mudança nenhuma nas fórmulas/cálculos — puramente uma segunda via de hospedagem/acesso.
+
 ## 2026-08-26 — APV → Visão Geral ganha evolução semanal (upgrade) + últimos 30 dias + Campinas
 
 - **Pedido**: replicar em Claim/APV o mesmo tratamento de evolução temporal já entregue em

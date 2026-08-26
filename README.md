@@ -44,9 +44,19 @@ Painel ao vivo de Operações da Turbi. Site estático, sem backend próprio, se
   como Web App** (`apps-script/Code.gs`), autorizado com a conta Google do responsável pelo painel —
   sem service account, sem credencial armazenada em lugar nenhum. O código-fonte aqui é só a cópia
   de referência; a implantação real é feita manualmente em [script.google.com](https://script.google.com).
-- **Hospedagem**: GitHub Pages, servindo `index.html` direto da raiz da branch `main` (repositório
-  público — Pages em repo privado exige GitHub Pro, ver `CHANGELOG.md`). Sem servidor, sem build,
-  sem deploy — só `git push`.
+- **Hospedagem — 2 URLs em paralelo (desde 2026-08-26)**:
+  - **GitHub Pages** (pública, sem login): `index.html` direto da raiz da branch `main`
+    (repositório público — Pages em repo privado exige GitHub Pro, ver `CHANGELOG.md`). Sem
+    servidor, sem build — só `git push`.
+  - **Google Apps Script, implantação restrita a @turbi.com.br** (com login): a MESMA
+    `apps-script/Code.gs` também serve a página inteira via `HtmlService` quando a URL do Web App
+    é acessada sem `?endpoint=` (ver `doGet()`) — o arquivo `index.html` colado dentro do projeto
+    Apps Script é byte-a-byte o mesmo arquivo deste repo, sem nenhuma edição (a página usa a mesma
+    constante `APPS_SCRIPT_URL` de sempre pra buscar dado, então funciona igual esteja ela
+    hospedada em qualquer um dos dois lugares). Isso é uma **implantação separada** do mesmo
+    script, com acesso "Qualquer pessoa dentro de turbi.com.br" — a implantação pública original
+    (usada pelas chamadas `?endpoint=...`) continua existindo, sem mudar nada, pra não quebrar o
+    GitHub Pages enquanto a versão logada é validada. Ver "Como reimplantar" abaixo.
 - **Navegação**: menu lateral recolhível (`localStorage` guarda a preferência), roteamento por hash
   (`#rmr`, `#apv/damage`) — cada página busca seu próprio dado, só quando visitada pela primeira
   vez ou quando o botão **"🔄 Atualizar dados"** é clicado com ela ativa (o botão atualiza só a
@@ -58,7 +68,8 @@ validada numericamente contra o dashboard oficial antes de qualquer migração. 
 
 ### Privacidade da nuvem de palavras (não-negociável)
 
-O site é público e sem login. A nuvem de palavras (Damage/Wash/POD — comentários de clientes)
+O site tem uma versão pública sem login (GitHub Pages) ativa em paralelo à versão logada — a regra
+abaixo vale pras duas, sem exceção. A nuvem de palavras (Damage/Wash/POD — comentários de clientes)
 **nunca** recebe texto bruto no navegador — toda a tokenização, remoção de stopwords/acento, e o
 corte de frequência mínima (`HAVING n >= 3`) acontecem dentro do SQL do endpoint `claim-detail`, em
 `apps-script/Code.gs` (tokenização via `REGEXP_EXTRACT_ALL`, não `SPLIT` — ver `CHANGELOG.md` pro
@@ -76,19 +87,32 @@ pra uma implantação válida do Apps Script.
 1. Abrir o projeto em [script.google.com](https://script.google.com) (mesma conta Google usada na
    implantação atual).
 2. Colar o conteúdo atualizado de `apps-script/Code.gs` no editor (substituindo tudo), `Ctrl+S`.
-3. Rodar a função `testeManual` pelo menos uma vez e conferir o **Registro de execução** — os números
+3. Se o projeto ainda não tiver o arquivo HTML da página (1ª vez configurando a versão logada):
+   Arquivo → Novo → HTML, nomear exatamente `index`, colar o conteúdo de `index.html` da raiz deste
+   repo sem nenhuma edição, `Ctrl+S`.
+4. Rodar a função `testeManual` pelo menos uma vez e conferir o **Registro de execução** — os números
    devem bater com os já certificados antes de seguir. Isso inclui `getClaimDetail` (Damage): a soma
    de `count` de todos os grupos deve ser da mesma ordem de grandeza do `damage_n` de `getClaimApv()`
    (não igual — um conta itens, o outro reservas distintas), e nenhuma das palavras da nuvem deve
    parecer placa/telefone/nome.
-4. `Implantar → Gerenciar implantações → editar (ícone de lápis) → Nova versão → Implantar`.
-   **Importante**: reimplantar sem criar uma "Nova versão" mantém o código antigo no ar — sempre
-   escolher "Nova versão".
-5. A URL do Web App (campo `APPS_SCRIPT_URL` em `index.html`) só muda se uma implantação **nova**
+5. `Implantar → Gerenciar implantações → editar (ícone de lápis) na implantação PÚBLICA existente →
+   Nova versão → Implantar`. **Importante**: reimplantar sem criar uma "Nova versão" mantém o
+   código antigo no ar — sempre escolher "Nova versão". Isso atualiza tanto a API pública (usada
+   pelo GitHub Pages) quanto a versão logada (se ela já existir), já que as duas rodam o mesmo
+   código — só muda o `index.html` colado dentro do projeto, que precisa ser atualizado manualmente
+   também sempre que o `index.html` da raiz do repo mudar (passo 3).
+6. A URL do Web App (campo `APPS_SCRIPT_URL` em `index.html`) só muda se uma implantação **nova**
    (não uma versão da mesma implantação) for criada. Reimplantar a mesma implantação preserva a URL.
-6. Conferir em **"Quem pode acessar"** que continua **"Qualquer pessoa"** — se vier como "Qualquer
-   pessoa dentro de turbi.com.br", o site vai pedir login do Google em vez de mostrar os dados
-   (já aconteceu uma vez nesta migração).
+7. Conferir em **"Quem pode acessar"** que a implantação PÚBLICA continua **"Qualquer pessoa"** — se
+   vier como "Qualquer pessoa dentro de turbi.com.br", o `fetch()` do GitHub Pages (site
+   público, sem sessão Google) recebe página de login do Google em vez de JSON (já aconteceu uma
+   vez nesta migração).
+8. **Criar/gerenciar a implantação logada (@turbi.com.br)** — separada da pública, feita só uma vez
+   (depois só precisa de "Nova versão" igual ao passo 5, na implantação certa):
+   `Implantar → Nova implantação → tipo "App da Web" → Executar como "Eu" → Acesso "Qualquer pessoa
+   dentro de turbi.com.br"`. A URL gerada é a nova URL "logada" pra usar no lugar do GitHub Pages —
+   ela serve a página (`index.html` colado no projeto) quando visitada sem parâmetro, mas os dados
+   continuam vindo da implantação pública de sempre (mesma `APPS_SCRIPT_URL` fixa no arquivo).
 
 ## Se algo quebrar — checklist
 
@@ -106,6 +130,11 @@ pra uma implantação válida do Apps Script.
 - **Números batendo errado**: nunca ajustar arredondamento/fórmula direto no `index.html` ou no
   `Code.gs` sem revalidar contra os números já certificados — ver `CHANGELOG.md` e a nota "Glossário
   e Fórmulas" no Obsidian (`Notas Obsidian/RMR OPS/`) para o histórico de validação.
+- **URL logada (@turbi.com.br) pede login em loop, ou mostra página em branco/erro do Apps Script**:
+  confirmar que o arquivo `index` dentro do projeto Apps Script está com o conteúdo atualizado
+  (passo 3 acima) e que o acesso da implantação está mesmo "Qualquer pessoa dentro de
+  turbi.com.br" (não "Somente eu"). Se aparecer um aviso de que o app não foi verificado pelo
+  Google, é esperado pra Web Apps internas — "Acessar [Avançado] → Acessar [projeto] (não seguro)".
 
 ## Limitações conhecidas (herdadas do painel original, não mudou nesta migração)
 

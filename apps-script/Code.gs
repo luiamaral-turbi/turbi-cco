@@ -1,5 +1,6 @@
 /**
- * RMR OPS — Web App que expõe Indisponibilidade e Claim/APV (BigQuery) como JSON.
+ * RMR OPS — Web App que expõe Indisponibilidade e Claim/APV (BigQuery) como JSON, e (desde
+ * 2026-08-26) também serve a própria página (index.html) via HtmlService — ver doGet().
  *
  * Réplica exata das fórmulas já validadas em:
  *   Claudinho/Turbi/Reuniao De Resultados - OPS/automacao/backend/queries/indisponibilidade.py
@@ -7,8 +8,21 @@
  *
  * Requisitos antes de implantar:
  *   1. No editor do Apps Script: Serviços (+) → adicionar "BigQuery API" (serviço avançado).
- *   2. Implantar → Nova implantação → tipo "App da Web" → Executar como "Eu" → Acesso "Qualquer pessoa".
- *   3. Na primeira execução, autorizar com a conta lui.amaral@turbi.com.br (mesma conta que já lê
+ *   2. Adicionar um arquivo HTML novo ao projeto chamado exatamente "index" (Apps Script já
+ *      guarda a extensão .html sozinho) com o conteúdo colado direto do `index.html` da raiz
+ *      deste repo — sem nenhuma edição, é o mesmo arquivo usado pelo GitHub Pages.
+ *   3. Existem 2 implantações desta MESMA base de código, com URLs e acessos diferentes:
+ *      - **Pública (existente)**: Implantar → Gerenciar implantações → implantação já ativa,
+ *        Executar como "Eu", Acesso "Qualquer pessoa". Usada hoje pelo GitHub Pages (só como API
+ *        — ninguém visita essa URL direto pra ver a página).
+ *      - **Login @turbi.com.br (nova)**: Implantar → **Nova implantação** (não "gerenciar" a
+ *        existente — precisa ser implantação nova pra ganhar URL própria), Executar como "Eu",
+ *        Acesso "Qualquer pessoa dentro de turbi.com.br". Essa é a URL pra usar no lugar do
+ *        GitHub Pages — exige login Google da conta corporativa antes de mostrar qualquer coisa.
+ *        Os dados continuam vindo da implantação pública de sempre (a página usa a mesma
+ *        constante `APPS_SCRIPT_URL` de sempre no `index.html` — só a página em si fica atrás
+ *        do login, não a API).
+ *   4. Na primeira execução, autorizar com a conta lui.amaral@turbi.com.br (mesma conta que já lê
  *      turbi-dc-ops via gcloud) — não precisa de service account nem credencial nova.
  *
  * Importante: ContentService sempre responde HTTP 200, mesmo em erro — por isso todo erro vem
@@ -45,8 +59,19 @@ var CATEGORIAS = [
 
 function doGet(e) {
   var params = (e && e.parameter) || {};
+  var endpoint = params.endpoint;
+
+  // Sem ?endpoint= → serve a página (index.html, mesmo arquivo do repo/GitHub Pages, colado
+  // como arquivo HTML dentro deste projeto Apps Script). Com ?endpoint= → API JSON, igual sempre
+  // foi. As duas coisas convivem na mesma implantação; a diferença de acesso público x
+  // restrito a @turbi.com.br fica na implantação (Nova implantação → Acesso), não no código.
+  if (!endpoint) {
+    return HtmlService.createHtmlOutputFromFile('index')
+      .setTitle('RMR - Painel ao vivo')
+      .addMetaTag('viewport', 'width=device-width, initial-scale=1');
+  }
+
   try {
-    var endpoint = params.endpoint;
     var range = defaultRange_(params.start_date, params.end_date);
     var city = params.city || null;
 
