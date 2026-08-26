@@ -753,7 +753,7 @@ async function fetchSheetRows(sheetName, spreadsheetId){
   const id = spreadsheetId || SHARED_SHEET_ID;
   const url = `https://docs.google.com/spreadsheets/d/${id}/gviz/tq?tqx=out:csv&sheet=${encodeURIComponent(sheetName)}`;
   const res = await fetch(url);
-  if (!res.ok) throw new Error(`Sheets CSV "${sheetName}": HTTP ${res.status}`);
+  if (!res.ok) throw new Error('Sheets CSV ' + sheetName + ': HTTP ' + res.status);
   return parseCsv(await res.text());
 }
 

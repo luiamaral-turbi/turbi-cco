@@ -4,6 +4,23 @@ Formato: data + o que mudou e por quê. Foco em decisões de arquitetura e fórm
 substituto do histórico de commits do Git, é um resumo pensado pra quem for dar manutenção sem
 querer ler o diff inteiro.
 
+## 2026-08-26 (5) — Bug "Sheets" reapareceu mesmo via `clasp push` (sem copiar/colar manual)
+
+- O `SyntaxError: Unexpected identifier 'Sheets'` (ver entrada (3) abaixo) voltou a acontecer
+  mesmo depois de eliminar completamente a cópia manual — o `clasp push` transmite bytes exatos
+  (confirmado com `clasp pull` + diff, idêntico byte a byte) e mesmo assim o navegador reportava
+  o mesmo erro ao carregar a versão logada. Isso descarta copiar/colar como causa e aponta pra algo
+  no próprio pipeline de renderização do `HtmlService` do Apps Script (que serve a página dentro de
+  um wrapper/iframe do Google, não HTML puro — ver entrada (4)).
+- Único ponto do arquivo com esse padrão exato: `` `Sheets CSV "${sheetName}": HTTP ${res.status}`
+  `` em `fetchSheetRows()` — um template literal (crase) com aspas duplas LITERAIS dentro. Troquei
+  por concatenação simples (`'Sheets CSV ' + sheetName + ...`), sem crase nem aspas aninhadas.
+  Não cheguei a confirmar a causa exata do lado do Google (não é algo que dá pra depurar por fora),
+  mas o sintoma sumiu depois dessa troca.
+- **Lição prática**: evitar template literals que misturam crase com aspas duplas literais dentro
+  do texto (não da interpolação) neste projeto — preferir aspas simples dentro de crases, ou
+  concatenação, quando o texto natural do erro/label tiver aspas.
+
 ## 2026-08-26 (4) — `onclick`/`onchange` inline não funcionam na versão logada (Apps Script)
 
 - **Sintoma, depois de já ter corrigido o bug de sintaxe da entrada anterior**: nenhum erro de
