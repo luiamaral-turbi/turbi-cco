@@ -65,33 +65,31 @@ function doGet(e) {
   var endpoint = params.endpoint;
 
   // Sem ?endpoint= → serve uma página-ninho minúscula e estática (hardcoded aqui, poucas linhas)
-  // que busca o conteúdo real via fetch(?endpoint=page-content) e escreve na página com
-  // document.write(). CAUSA RAIZ ENCONTRADA (2026-08-26): QUALQUER uso de HtmlService pra montar
-  // a resposta do Web App — `createHtmlOutputFromFile('index')` OU `createHtmlOutput(string)` —
-  // corta silenciosamente qualquer linha no primeiro `//` que encontra, mesmo dentro de uma
-  // string/URL (ex. `https://docs.google.com/...` virava só `https:`), quebrando a sintaxe do JS
-  // a partir dali num ponto que muda a cada edição (por isso "Sheets", "Linha" e "Meta" quebraram
-  // um de cada vez, nunca resolvendo de vez — não é sobre ler de arquivo, é sobre HtmlService
-  // como um todo processando conteúdo grande como resposta HTTP). `ContentService` (usado por
-  // TODOS os outros endpoints) nunca teve esse problema. Por isso: a página REAL viaja como JSON
-  // comum (`page-content`, fonte: `INDEX_HTML_CONTENT` em `IndexHtml.gs`, uma string pura, nunca
-  // tocada por HtmlService) — só essa casca minúscula passa por HtmlService, pequena o bastante
-  // pra nunca esbarrar no bug.
+  // que busca o conteúdo real via google.script.run e escreve na página com document.write().
+  // CAUSA RAIZ #1 (2026-08-26): QUALQUER uso de HtmlService pra montar a resposta do Web App —
+  // `createHtmlOutputFromFile('index')` OU `createHtmlOutput(string)` — corta silenciosamente
+  // qualquer linha no primeiro `//` que encontra, mesmo dentro de uma string/URL (ex.
+  // `https://docs.google.com/...` virava só `https:`), quebrando a sintaxe do JS a partir dali
+  // num ponto que muda a cada edição. `ContentService` nunca teve esse problema — por isso a
+  // página REAL vem de `INDEX_HTML_CONTENT` (`IndexHtml.gs`, string pura, nunca tocada por
+  // HtmlService), só essa casca minúscula passa por HtmlService.
+  // CAUSA RAIZ #2 (mesmo dia): usar `fetch()` daqui pra buscar o conteúdo (via `?endpoint=
+  // page-content`) dava "Failed to fetch" — `ScriptApp.getService().getUrl()` devolve um formato
+  // de URL (`/a/turbi.com.br/macros/s/...`) que, embora funcione se acessado direto, o navegador
+  // trata como origem DIFERENTE da URL que a página foi carregada (`/a/macros/turbi.com.br/s/...`
+  // — ordem dos segmentos trocada), e bloqueia o fetch entre as duas por CORS. `location.href`
+  // também não serve (é uma URL interna googleusercontent.com do iframe sandbox, não a real).
+  // Solução: `google.script.run`, a API nativa do Apps Script pra chamar função de servidor a
+  // partir de uma página HtmlService — não depende de montar nenhuma URL, funciona sempre.
   if (!endpoint) {
-    // location.href, dentro do iframe que o HtmlService usa pra servir a página, NÃO é a URL
-    // real do Web App (é uma URL interna googleusercontent.com) — usar isso pra montar o fetch()
-    // batia no lugar errado e voltava uma página HTML de login em vez do JSON. A URL certa vem
-    // do próprio servidor via ScriptApp.getService().getUrl(), que sempre aponta pra implantação
-    // que está de fato respondendo esta requisição.
-    var selfUrl = ScriptApp.getService().getUrl();
     var bootstrap =
       '<!doctype html><html><head><meta name="viewport" content="width=device-width, initial-scale=1">' +
       '<title>RMR - Painel ao vivo</title></head><body>' +
       '<script>' +
-      'fetch(' + JSON.stringify(selfUrl) + ' + "?endpoint=page-content")' +
-      '.then(function(r){return r.json();})' +
-      '.then(function(d){document.open();document.write(d.html);document.close();})' +
-      '.catch(function(e){document.body.textContent="Falha ao carregar a pagina: " + e.message;});' +
+      'google.script.run' +
+      '.withSuccessHandler(function(html){document.open();document.write(html);document.close();})' +
+      '.withFailureHandler(function(err){document.body.textContent="Falha ao carregar a pagina: " + err.message;})' +
+      '.getPageContent_();' +
       '</script></body></html>';
     return HtmlService.createHtmlOutput(bootstrap).setTitle('RMR - Painel ao vivo');
   }
@@ -124,6 +122,13 @@ function doGet(e) {
 
 function jsonOutput_(obj) {
   return ContentService.createTextOutput(JSON.stringify(obj)).setMimeType(ContentService.MimeType.JSON);
+}
+
+/** Chamada via google.script.run pela casca de doGet() — devolve INDEX_HTML_CONTENT puro
+ * (string de IndexHtml.gs, nunca tocada por HtmlService). O `?endpoint=page-content` continua
+ * existindo em paralelo só pra eu conseguir validar via curl fora do navegador. */
+function getPageContent_() {
+  return INDEX_HTML_CONTENT;
 }
 
 /** Mesma regra do _default_range() do FastAPI: 1º de janeiro do ano corrente até ontem. */

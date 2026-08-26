@@ -4,6 +4,23 @@ Formato: data + o que mudou e por quê. Foco em decisões de arquitetura e fórm
 substituto do histórico de commits do Git, é um resumo pensado pra quem for dar manutenção sem
 querer ler o diff inteiro.
 
+## 2026-08-26 (10) — Fix real da casca: `google.script.run` em vez de `fetch()`
+
+- O fix anterior (`ScriptApp.getService().getUrl()`) ainda dava `Failed to fetch`. Causa: o
+  `getUrl()` devolve a URL no formato `/a/turbi.com.br/macros/s/ID/exec` — que FUNCIONA se acessado
+  direto (confirmado por `curl`) — mas o navegador carrega a página pela URL real no formato
+  `/a/macros/turbi.com.br/s/ID/exec` (ordem dos segmentos trocada). Como os dois formatos "parecem"
+  origens diferentes pro navegador, o `fetch()» de um pro outro é bloqueado por CORS.
+- **Correção definitiva**: trocado `fetch()` por **`google.script.run`** — a API nativa do Apps
+  Script pra chamar função de servidor a partir de uma página `HtmlService`, injetada
+  automaticamente em qualquer página assim, sem precisar montar URL nenhuma (não sofre desse tipo
+  de problema por design). Nova função de servidor `getPageContent_()` devolve
+  `INDEX_HTML_CONTENT` direto; `?endpoint=page-content` continua existindo em paralelo só pra
+  validação via `curl` fora do navegador.
+- **Descoberta lateral**: existiam **4 implantações** do mesmo script (esperava 2) — uma extra foi
+  criada sem querer ao clicar em "Nova implantação" em vez de editar a existente. Reimplantado nas
+  3 relevantes (pública + as 2 logadas) pra eliminar a inconsistência de qual URL tinha qual código.
+
 ## 2026-08-26 (9) — Fix da casca: `location.href` não é a URL real dentro do iframe do Apps Script
 
 - A casca mínima (entrada 8) carregava mas o `fetch(?endpoint=page-content)` voltava
