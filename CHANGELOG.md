@@ -4,6 +4,35 @@ Formato: data + o que mudou e por quê. Foco em decisões de arquitetura e fórm
 substituto do histórico de commits do Git, é um resumo pensado pra quem for dar manutenção sem
 querer ler o diff inteiro.
 
+## 2026-08-26 (8) — Causa raiz REAL encontrada e corrigida: HtmlService corta linha no primeiro `//`
+
+- A tentativa de base64 (entrada 7) também falhou com o mesmo sintoma. Comparando **byte a byte**
+  o conteúdo servido (`?endpoint=page-content`, JSON puro) contra o `index.html` original, achei a
+  causa raiz de verdade: `HtmlService` (tanto `createHtmlOutputFromFile('index')` quanto
+  `createHtmlOutput(string)`) corta **qualquer linha no primeiro `//` que encontrar**, mesmo
+  quando o `//` faz parte de uma URL dentro de uma string/template literal — a linha
+  `` const url = `https://docs.google.com/...`; `` virava literalmente
+  `` const url = `https: `` (crase nunca fechada), o que faz o parser JS engolir tudo até a
+  PRÓXIMA crase do arquivo como se fosse texto — daí "Sheets", depois "Linha", depois "Meta"
+  quebrarem em sequência: cada correção mudava o tamanho do arquivo e por consequência qual
+  crase seguinte virava o ponto de re-sincronização errado. O bug é do `HtmlService` como
+  mecanismo de resposta HTTP (não é sobre ler de arquivo — `createHtmlOutput(string)` tem o mesmo
+  problema), então não tinha correção possível editando o conteúdo, só contornando o mecanismo.
+- **Correção definitiva**: `doGet()` sem `?endpoint=` agora devolve só uma casca HTML minúscula
+  (algumas linhas fixas, sem nenhum `//`, hardcoded em `Code.gs`) que faz
+  `fetch(?endpoint=page-content)` e escreve o resultado com `document.write()`. O conteúdo real da
+  página **nunca mais passa por `HtmlService`** — vem de `INDEX_HTML_CONTENT`, uma string pura
+  definida em `IndexHtml.gs` (gerado automaticamente no `clasp push` a partir do `index.html` da
+  raiz), servida via `ContentService`/JSON — o mesmo mecanismo comprovadamente confiável usado por
+  todos os outros endpoints desde sempre.
+- **Validado com rigor antes de tocar produção**: `JSON.parse()` do conteúdo devolvido comparado
+  **igual (`===`)** ao `index.html` original, mais checagem de sintaxe dos 2 blocos `<script>` via
+  `new Function()` — sem nenhuma diferença, sem nenhum erro. Testado primeiro no endpoint `/dev`
+  (autenticado com token do `clasp`, sem tocar nas implantações reais), só depois implantado nas
+  duas produções com a checagem de acesso de sempre.
+- Arquivo `index` (HTML) antigo do projeto Apps Script fica órfão (não é mais referenciado nem
+  deletado automaticamente) — pode ser removido manualmente no editor, sem efeito no funcionamento.
+
 ## 2026-08-26 (7) — Fix definitivo: servir a página via base64 (contorna a corrupção de vez)
 
 - A varredura de aspas duplas (entrada 6) não resolveu — o mesmo tipo de erro reapareceu numa

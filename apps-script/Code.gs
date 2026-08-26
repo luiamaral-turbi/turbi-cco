@@ -1,6 +1,6 @@
 /**
  * RMR OPS — Web App que expõe Indisponibilidade e Claim/APV (BigQuery) como JSON, e (desde
- * 2026-08-26) também serve a própria página (index.html) via HtmlService — ver doGet().
+ * 2026-08-26) também serve a própria página via HtmlService — ver doGet() e IndexHtml.gs.
  *
  * Réplica exata das fórmulas já validadas em:
  *   Claudinho/Turbi/Reuniao De Resultados - OPS/automacao/backend/queries/indisponibilidade.py
@@ -8,9 +8,12 @@
  *
  * Requisitos antes de implantar:
  *   1. No editor do Apps Script: Serviços (+) → adicionar "BigQuery API" (serviço avançado).
- *   2. Adicionar um arquivo HTML novo ao projeto chamado exatamente "index" (Apps Script já
- *      guarda a extensão .html sozinho) com o conteúdo colado direto do `index.html` da raiz
- *      deste repo — sem nenhuma edição, é o mesmo arquivo usado pelo GitHub Pages.
+ *   2. A página é servida a partir da constante `INDEX_HTML_CONTENT`, definida no arquivo
+ *      `IndexHtml.gs` — **nunca** como arquivo `.html` do projeto (achado ao vivo: Apps Script
+ *      processa arquivo `.html` como "template" e corta qualquer linha no primeiro `//` que
+ *      encontrar, mesmo dentro de uma URL — corrompe o JS de forma silenciosa). `IndexHtml.gs` é
+ *      gerado automaticamente pelo `clasp push` (ver README.md) a partir do `index.html` da raiz
+ *      do repo — nunca editar esse arquivo `.gs` direto, ele é sobrescrito a cada push.
  *   3. Existem 2 implantações desta MESMA base de código, com URLs e acessos diferentes:
  *      - **Pública (existente)**: Implantar → Gerenciar implantações → implantação já ativa,
  *        Executar como "Eu", Acesso "Qualquer pessoa". Usada hoje pelo GitHub Pages (só como API
@@ -61,31 +64,30 @@ function doGet(e) {
   var params = (e && e.parameter) || {};
   var endpoint = params.endpoint;
 
-  // Sem ?endpoint= → serve a página (index.html, mesmo arquivo do repo/GitHub Pages, colado
-  // como arquivo HTML dentro deste projeto Apps Script). Com ?endpoint= → API JSON, igual sempre
-  // foi. As duas coisas convivem na mesma implantação; a diferença de acesso público x
-  // restrito a @turbi.com.br fica na implantação (Nova implantação → Acesso), não no código.
-  //
-  // O conteúdo vai em base64 dentro de um wrapper mínimo, reconstruído no navegador via
-  // atob()+TextDecoder — não serve o HTML direto. Achado ao vivo: o pipeline de renderização do
-  // HtmlService (IFRAME sandbox) corrompe o texto em pontos que mudam de posição a cada edição
-  // (já vimos "Sheets", depois "Linha", depois "Meta" quebrarem um de cada vez, sempre um
-  // SyntaxError tipo "Unexpected identifier" em algum ponto do arquivo) — não é um caractere
-  // específico corrigível, parece ser posição/tamanho-dependente. Base64 usa só [A-Za-z0-9+/=],
-  // um alfabeto que não dá pra esse tipo de corrupção acontecer, então contorna o problema sem
-  // precisar entender a causa exata do lado do Google.
+  // Sem ?endpoint= → serve uma página-ninho minúscula e estática (hardcoded aqui, poucas linhas)
+  // que busca o conteúdo real via fetch(?endpoint=page-content) e escreve na página com
+  // document.write(). CAUSA RAIZ ENCONTRADA (2026-08-26): QUALQUER uso de HtmlService pra montar
+  // a resposta do Web App — `createHtmlOutputFromFile('index')` OU `createHtmlOutput(string)` —
+  // corta silenciosamente qualquer linha no primeiro `//` que encontra, mesmo dentro de uma
+  // string/URL (ex. `https://docs.google.com/...` virava só `https:`), quebrando a sintaxe do JS
+  // a partir dali num ponto que muda a cada edição (por isso "Sheets", "Linha" e "Meta" quebraram
+  // um de cada vez, nunca resolvendo de vez — não é sobre ler de arquivo, é sobre HtmlService
+  // como um todo processando conteúdo grande como resposta HTTP). `ContentService` (usado por
+  // TODOS os outros endpoints) nunca teve esse problema. Por isso: a página REAL viaja como JSON
+  // comum (`page-content`, fonte: `INDEX_HTML_CONTENT` em `IndexHtml.gs`, uma string pura, nunca
+  // tocada por HtmlService) — só essa casca minúscula passa por HtmlService, pequena o bastante
+  // pra nunca esbarrar no bug.
   if (!endpoint) {
-    var pageContent = HtmlService.createHtmlOutputFromFile('index').getContent();
-    var b64 = Utilities.base64Encode(pageContent, Utilities.Charset.UTF_8);
-    var wrapper =
-      '<!doctype html><html><head><meta name="viewport" content="width=device-width, initial-scale=1"></head><body>' +
+    var bootstrap =
+      '<!doctype html><html><head><meta name="viewport" content="width=device-width, initial-scale=1">' +
+      '<title>RMR - Painel ao vivo</title></head><body>' +
       '<script>' +
-      'var b64=' + JSON.stringify(b64) + ';' +
-      'var bytes=Uint8Array.from(atob(b64),function(c){return c.charCodeAt(0);});' +
-      'var html=new TextDecoder("utf-8").decode(bytes);' +
-      'document.open();document.write(html);document.close();' +
+      'fetch(location.href.split("?")[0] + "?endpoint=page-content")' +
+      '.then(function(r){return r.json();})' +
+      '.then(function(d){document.open();document.write(d.html);document.close();})' +
+      '.catch(function(e){document.body.textContent="Falha ao carregar a pagina: " + e.message;});' +
       '</script></body></html>';
-    return HtmlService.createHtmlOutput(wrapper).setTitle('RMR - Painel ao vivo');
+    return HtmlService.createHtmlOutput(bootstrap).setTitle('RMR - Painel ao vivo');
   }
 
   try {
@@ -93,7 +95,9 @@ function doGet(e) {
     var city = params.city || null;
 
     var data;
-    if (endpoint === 'indisponibilidade') {
+    if (endpoint === 'page-content') {
+      data = { html: INDEX_HTML_CONTENT };
+    } else if (endpoint === 'indisponibilidade') {
       data = getIndisponibilidade(range.start, range.end, city);
     } else if (endpoint === 'indisponibilidade-overview') {
       data = getIndisponibilidadeOverview(range.start, range.end, city);

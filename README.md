@@ -49,14 +49,15 @@ Painel ao vivo de Operações da Turbi. Site estático, sem backend próprio, se
     (repositório público — Pages em repo privado exige GitHub Pro, ver `CHANGELOG.md`). Sem
     servidor, sem build — só `git push`.
   - **Google Apps Script, implantação restrita a @turbi.com.br** (com login): a MESMA
-    `apps-script/Code.gs` também serve a página inteira via `HtmlService` quando a URL do Web App
-    é acessada sem `?endpoint=` (ver `doGet()`) — o arquivo `index.html` colado dentro do projeto
-    Apps Script é byte-a-byte o mesmo arquivo deste repo, sem nenhuma edição (a página usa a mesma
-    constante `APPS_SCRIPT_URL` de sempre pra buscar dado, então funciona igual esteja ela
-    hospedada em qualquer um dos dois lugares). Isso é uma **implantação separada** do mesmo
-    script, com acesso "Qualquer pessoa dentro de turbi.com.br" — a implantação pública original
-    (usada pelas chamadas `?endpoint=...`) continua existindo, sem mudar nada, pra não quebrar o
-    GitHub Pages enquanto a versão logada é validada. Ver "Como reimplantar" abaixo.
+    `apps-script/Code.gs` também serve a página quando a URL do Web App é acessada sem
+    `?endpoint=` (ver `doGet()`) — mas **não** via `HtmlService` direto com o HTML inteiro (isso
+    corrompe o conteúdo, ver "Armadilha real #2" mais abaixo). `doGet()` devolve uma casca mínima
+    que busca o conteúdo real via `fetch(?endpoint=page-content)`, uma chamada JSON comum — o
+    conteúdo (`INDEX_HTML_CONTENT`, gerado a partir do `index.html` deste repo, sem edição) viaja
+    pelo mesmo mecanismo `ContentService` que toda a API já usa. Isso é uma **implantação
+    separada** do mesmo script, com acesso "Qualquer pessoa dentro de turbi.com.br" — a
+    implantação pública original (usada pelas chamadas `?endpoint=...` e pelo GitHub Pages)
+    continua existindo, sem mudar nada. Ver "Como reimplantar" abaixo.
 - **Navegação**: menu lateral recolhível (`localStorage` guarda a preferência), roteamento por hash
   (`#rmr`, `#apv/damage`) — cada página busca seu próprio dado, só quando visitada pela primeira
   vez ou quando o botão **"🔄 Atualizar dados"** é clicado com ela ativa (o botão atualiza só a
@@ -92,22 +93,47 @@ corporativa, da variável `NODE_EXTRA_CA_CERTS` apontando pro mesmo `corporate_c
 gcloud (ver `CLAUDE.md` da raiz do workspace).
 
 1. Editar `apps-script/Code.gs` e/ou `index.html` normalmente.
-2. Copiar o conteúdo pros nomes que o projeto Apps Script realmente usa (o arquivo de código lá se
-   chama **`Código`**, não `Code` — nome legado, não vale a pena renomear):
+2. Gerar os artefatos que o projeto Apps Script realmente usa (todos fora do git — só existem como
+   artefato de push, nunca editar direto neles):
    ```bash
-   cp apps-script/Code.gs "apps-script/Código.gs"
-   cp index.html apps-script/index.html
+   cp apps-script/Code.gs "apps-script/Código.gs"   # nome legado do arquivo de código lá, não vale renomear
+   node -e "const fs=require('fs'); const html=fs.readFileSync('index.html','utf8'); fs.writeFileSync('apps-script/IndexHtml.gs', 'var INDEX_HTML_CONTENT = ' + JSON.stringify(html) + ';\n');"
    ```
-   (esses 2 arquivos gerados ficam fora do git — só existem como artefato de push, nunca editar
-   direto neles).
-3. `clasp push --force` de dentro de `apps-script/` — sobe os 3 arquivos (`appsscript.json`,
-   `Código.gs`, `index.html`) pro "HEAD" do projeto (rascunho, ainda não visível pra quem acessa via
-   URL de implantação).
+   **Nunca** criar/usar um arquivo `.html` dentro do projeto Apps Script pra guardar a página — ver
+   a "Armadilha real" mais abaixo, é a causa de uma investigação inteira de um bug de sintaxe que
+   só existia em produção.
+3. `clasp push --force` de dentro de `apps-script/` — sobe os arquivos (`appsscript.json`,
+   `Código.gs`, `IndexHtml.gs`) pro "HEAD" do projeto (rascunho, ainda não visível pra quem acessa
+   via URL de implantação).
 4. **Redeploy nas 2 implantações, uma de cada vez** (`clasp deployments` lista os IDs):
    ```bash
    clasp deploy -i <ID_DA_IMPLANTACAO_PUBLICA> -d "descrição"
    clasp deploy -i <ID_DA_IMPLANTACAO_LOGADA> -d "descrição"
    ```
+5. **Validar antes de confiar**: `curl` no `?endpoint=page-content` da implantação pública, dar
+   `JSON.parse()` no resultado e comparar `.html` contra o `index.html` da raiz — têm que ser
+   **idênticos**. Só o conteúdo sendo igual garante que o `HtmlService` não mutilou nada no meio do
+   caminho (ver "Armadilha real" abaixo pro porquê disso importar).
+
+### ⚠️ Armadilha real #2 — `HtmlService` corta linha no primeiro `//`, mesmo dentro de string
+
+Nunca, em hipótese nenhuma, usar `HtmlService.createHtmlOutputFromFile(...)` ou
+`HtmlService.createHtmlOutput(stringGrande)` pra servir o conteúdo real da página (`index.html`,
+~114KB). Achado ao vivo, depois de uma investigação longa: esse mecanismo corta **qualquer linha
+no primeiro `//` que encontrar**, mesmo quando o `//` é parte de uma URL dentro de uma string —
+`` const url = `https://docs.google.com/...` `` virava `` const url = `https: `` (crase nunca
+fechada), quebrando a sintaxe de tudo que vem depois até a próxima crase do arquivo. Isso NÃO É
+sobre ler de arquivo especificamente — `createHtmlOutput()` com uma string direto tem o mesmo
+problema. É por isso que a página é servida assim, desde 2026-08-26:
+- `doGet()` sem `?endpoint=` devolve só uma casca HTML **minúscula e fixa** (sem nenhum `//`
+  dentro), que faz `fetch(?endpoint=page-content)` e escreve o resultado com `document.write()`.
+- O conteúdo real (`INDEX_HTML_CONTENT`, de `IndexHtml.gs`) viaja como JSON comum via
+  `ContentService` — o mesmo mecanismo que TODOS os outros endpoints já usam sem problema nenhum,
+  em qualquer tamanho de payload.
+- **Nunca** tentar "simplificar" isso voltando a servir `index.html` direto via `HtmlService` — já
+  foi tentado de 3 formas diferentes (arquivo `.html`, string em `.gs`, base64) e todas quebram do
+  mesmo jeito, porque o problema é como o Apps Script serve a RESPOSTA HTTP de um `HtmlOutput`, não
+  como o conteúdo é armazenado.
 
 ### ⚠️ Armadilha real (já aconteceu, causou uma queda real do GitHub Pages)
 
@@ -124,17 +150,20 @@ trocar pra `"DOMAIN"` → `push` → `deploy -i <logada>`. Sempre conferir com `
 pública direto) que a implantação pública continua respondendo JSON sem pedir login depois de
 qualquer deploy.
 
-### Via editor do Apps Script (manual, sempre funciona como fallback)
+### Via editor do Apps Script (manual, fallback só pro `Código.gs`)
 
 1. Abrir o projeto em [script.google.com](https://script.google.com) (mesma conta Google usada na
    implantação atual).
 2. Colar o conteúdo atualizado de `apps-script/Code.gs` no arquivo **`Código`** do editor
    (substituindo tudo), `Ctrl+S`. Copiar da visualização **"raw"** do GitHub
    (`raw.githubusercontent.com/luiamaral-turbi/turbi-cco/main/...`), nunca da visualização com
-   realce de sintaxe — colar de lá já corrompeu um caractere de aspas invertidas (crase) uma vez,
-   quebrando a página inteira (`SyntaxError` na primeira crase mal copiada trava o carregamento de
-   tudo que vem depois no mesmo `<script>`).
-3. Mesma coisa pro arquivo `index` (HTML) com o `index.html` da raiz do repo.
+   realce de sintaxe — colar de lá já corrompeu um caractere de aspas invertidas (crase) uma vez.
+3. **Pro conteúdo da página (`index.html`), NÃO existe fallback manual seguro** — colar o HTML
+   direto num arquivo `.html` do projeto reproduz a "Armadilha real #2" abaixo (o `HtmlService`
+   corta linha no primeiro `//`, mesmo sem nenhum erro de copiar/colar). É obrigatório rodar o
+   comando `node` do passo 2 da seção acima pra gerar `apps-script/IndexHtml.gs`, e colar o
+   CONTEÚDO DESSE ARQUIVO GERADO (uma única linha `var INDEX_HTML_CONTENT = "...";`) num arquivo
+   **`.gs`** do projeto chamado `IndexHtml` — nunca um arquivo `.html`.
 4. Rodar a função `testeManual` pelo menos uma vez e conferir o **Registro de execução** — os números
    devem bater com os já certificados antes de seguir. Isso inclui `getClaimDetail` (Damage): a soma
    de `count` de todos os grupos deve ser da mesma ordem de grandeza do `damage_n` de `getClaimApv()`
@@ -169,10 +198,15 @@ qualquer deploy.
   `Code.gs` sem revalidar contra os números já certificados — ver `CHANGELOG.md` e a nota "Glossário
   e Fórmulas" no Obsidian (`Notas Obsidian/RMR OPS/`) para o histórico de validação.
 - **URL logada (@turbi.com.br) pede login em loop, ou mostra página em branco/erro do Apps Script**:
-  confirmar que o arquivo `index` dentro do projeto Apps Script está com o conteúdo atualizado
-  (passo 3 acima) e que o acesso da implantação está mesmo "Qualquer pessoa dentro de
-  turbi.com.br" (não "Somente eu"). Se aparecer um aviso de que o app não foi verificado pelo
-  Google, é esperado pra Web Apps internas — "Acessar [Avançado] → Acessar [projeto] (não seguro)".
+  confirmar que o acesso da implantação está mesmo "Qualquer pessoa dentro de turbi.com.br" (não
+  "Somente eu"). Se aparecer um aviso de que o app não foi verificado pelo Google, é esperado pra
+  Web Apps internas — "Acessar [Avançado] → Acessar [projeto] (não seguro)".
+- **`SyntaxError: Unexpected identifier` no console, em qualquer palavra, mudando de lugar a cada
+  deploy**: é a "Armadilha real #2" abaixo — algo no fluxo voltou a servir `index.html` via
+  `HtmlService` direto (arquivo `.html` do projeto, ou `createHtmlOutput()` com o HTML inteiro).
+  Conferir `apps-script/Código.gs` — o `doGet()` sem `?endpoint=` tem que devolver só a casca
+  minúscula, nunca o HTML completo; o conteúdo completo só pode ser servido via
+  `?endpoint=page-content` (JSON/`ContentService`).
 
 ## Limitações conhecidas (herdadas do painel original, não mudou nesta migração)
 

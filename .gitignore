@@ -18,6 +18,7 @@ package-lock.json
 apps-script/.clasp.json
 apps-script/Código.gs
 apps-script/index.html
+apps-script/IndexHtml.gs
 
 # Segredos locais (nunca versionar) — nada disso deveria existir, mas por segurança:
 *.local
