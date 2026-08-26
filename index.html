@@ -448,9 +448,20 @@
 
     <div class="ov-section">
       <div class="ov-section-eyebrow">Panorama</div>
-      <h3 class="ov-title">Tendência semanal</h3>
+      <h3 class="ov-title">Evolução semanal</h3>
       <p class="ov-finding-line" id="apv-ov-trend-finding"></p>
-      <div class="card"><div id="c-apvOverviewTrend"></div></div>
+      <div class="card"><div class="tbl-wrap"><div id="c-apvOvWeekly"></div></div><div class="legend-row" id="legend-apv-ov"></div><div class="legend-row"><span class="legend-item"><span class="legend-line"></span>Meta APV Ops (ref.)</span></div></div>
+
+      <h3 class="ov-title" style="margin-top:20px">Últimos 30 dias corridos</h3>
+      <p class="sub-note">Janela fixa hoje-30..ontem, independente do filtro de período acima — pra ver tendência recente.</p>
+      <div class="card"><div class="tbl-wrap"><div id="c-apvOvLast30"></div></div></div>
+
+      <div class="campinas-block">
+        <div class="subhead">APV — Campinas <span class="campinas-tag">recorte geográfico</span> <span class="sub-note">mesma fórmula, filtrada por podCity = Campinas (join por podid)</span></div>
+        <div class="card"><div class="tbl-wrap"><div id="c-apvOvWeekly-cp"></div></div><div class="legend-row" id="legend-apv-ov-cp"></div></div>
+        <div class="subhead">Últimos 30 dias corridos — Campinas</div>
+        <div class="card"><div class="tbl-wrap"><div id="c-apvOvLast30-cp"></div></div></div>
+      </div>
     </div>
 
     <div class="ov-section">
@@ -709,12 +720,13 @@ async function fetchIndispOverview(startDate, endDate, city){
   return data;
 }
 
-async function fetchClaimOverview(startDate, endDate){
+async function fetchClaimOverview(startDate, endDate, city){
   const params = new URLSearchParams({ endpoint: 'claim-overview', start_date: startDate, end_date: endDate });
+  if (city) params.set('city', city);
   const res = await fetch(`${APPS_SCRIPT_URL}?${params.toString()}`);
-  if (!res.ok) throw new Error(`claim-overview: HTTP ${res.status}`);
+  if (!res.ok) throw new Error(`claim-overview${city ? ' ('+city+')' : ''}: HTTP ${res.status}`);
   const data = await res.json();
-  if (data && data.detail) throw new Error(`claim-overview: ${data.detail}`);
+  if (data && data.detail) throw new Error(`claim-overview${city ? ' ('+city+')' : ''}: ${data.detail}`);
   return data;
 }
 
@@ -929,9 +941,13 @@ function lineBarChart(elId, cfg){
 }
 
 function stackedChart(elId, cfg){
-  const W=640, H=cfg.height||160, padL=32, padR=8, padT=20, padB=22;
-  const innerW=W-padL-padR, innerH=H-padT-padB;
-  const n=cfg.labels.length, gap=innerW/n, bw=gap*0.5;
+  const n=cfg.labels.length;
+  // Mesma correção de largura dinâmica do lineBarChart/paretoChart — com muitos pontos
+  // (evolução semanal/últimos 30 dias), barras+meta num SVG de largura fixa colidem.
+  const padL=32, padR=8, padT=20, padB=22;
+  const W=Math.max(640, padL+padR+n*34), H=cfg.height||160;
+  const innerW=W-padL-padR, gap=innerW/n, bw=gap*0.5;
+  const innerH=H-padT-padB;
   const dec = cfg.decimals!=null?cfg.decimals:2;
   const unit = cfg.unit!=null?cfg.unit:'%';
   const totals=cfg.labels.map((_,i)=>cfg.series.reduce((s,ser)=>s+ser.values[i],0));
@@ -939,7 +955,8 @@ function stackedChart(elId, cfg){
   const max=Math.max(...totals, ...(metaArr||[0]).filter(v=>v!=null));
   const y=v=>padT+innerH-(v/max)*innerH;
   const x=i=>padL+gap*i+(gap-bw)/2;
-  let svg=`<svg viewBox="0 0 ${W} ${H}" class="chart-svg">`;
+  const wideStyle = W>640 ? ` style="width:${W}px;max-width:none;display:block"` : '';
+  let svg=`<svg viewBox="0 0 ${W} ${H}" class="chart-svg"${wideStyle}>`;
   svg+=`<line x1="${padL}" y1="${y(0)}" x2="${W-padR}" y2="${y(0)}" class="chart-axis"/>`;
   for(let i=0;i<n;i++){
     let acc=0;
@@ -1572,8 +1589,12 @@ async function loadApvOverview(){
   const endYm = document.getElementById('apv-overview-end').value;
   const startDate = `${startYm}-01`;
   const endDate = lastDayOfMonth(endYm);
-  const data = await fetchClaimOverview(startDate, endDate);
-  renderApvOverview(data);
+  const [data, campinasData, metas] = await Promise.all([
+    fetchClaimOverview(startDate, endDate),
+    fetchClaimOverview(startDate, endDate, 'Campinas'),
+    getMetasData(),
+  ]);
+  renderApvOverview(data, campinasData, metas.apv_total.mensal);
 }
 
 // Cor condicional nas tabelas de Visão Geral — vermelho acima da média geral, verde abaixo
@@ -1597,7 +1618,45 @@ function excessReservas_(pct, n, baselinePct){
   return Math.max(0, ((pct - baselinePct) / 100) * n);
 }
 
-function renderApvOverview(data){
+const APV_STACK_COLORS = [{name:'Wash',color:'#171469'},{name:'Damage',color:'#3B36D8'},{name:'POD',color:'#B0ADEE'}];
+
+// Evolução semanal + últimos 30 dias (Geral OU Campinas, via opts.suffix) — mesmo padrão de
+// renderIndispOverviewBlock: stackedChart com meta sobreposta, igual ao gráfico mensal que a
+// aba RMR já usa pra Claim/APV (renderClaimApv/c-apvStack), só que em granularidade mais fina.
+function renderApvOverviewTrendBlock(data, apvTotalMensal, opts){
+  opts = opts || {};
+  const suf = opts.suffix || '';
+
+  const weeklyMeta = data.weekly.labels.map(w => metaParaData_(w, apvTotalMensal));
+  stackedChart('c-apvOvWeekly'+suf, {
+    labels: data.weekly.labels.map(weekLabel_),
+    series: APV_STACK_COLORS.map(s => ({ name: s.name, color: s.color, values: data.weekly[s.name.toLowerCase()] })),
+    metaTotal: weeklyMeta, height: 190,
+  });
+  buildLegend('legend-apv-ov'+suf, APV_STACK_COLORS);
+
+  const last30Meta = data.last30d.labels.map(d => metaParaData_(d, apvTotalMensal));
+  stackedChart('c-apvOvLast30'+suf, {
+    labels: data.last30d.labels.map(dayLabelShort_),
+    series: APV_STACK_COLORS.map(s => ({ name: s.name, color: s.color, values: data.last30d[s.name.toLowerCase()] })),
+    metaTotal: last30Meta, height: 190,
+  });
+
+  if (!suf) {
+    const wkD = data.weekly.damage, wkW = data.weekly.wash, wkP = data.weekly.pod;
+    if (wkD.length >= 4) {
+      const half = Math.floor(wkD.length/2);
+      const avg = arr => arr.reduce((a,b)=>a+b,0)/arr.length;
+      const d1 = avg(wkD.slice(0,half)), d2 = avg(wkD.slice(half));
+      const w1 = avg(wkW.slice(0,half)), w2 = avg(wkW.slice(half));
+      const p1 = avg(wkP.slice(0,half)), p2 = avg(wkP.slice(half));
+      document.getElementById('apv-ov-trend-finding').innerHTML =
+        `Damage: <b>${d1.toFixed(2)}%</b> → <b>${d2.toFixed(2)}%</b> · Wash: <b>${w1.toFixed(2)}%</b> → <b>${w2.toFixed(2)}%</b> · POD: <b>${p1.toFixed(2)}%</b> → <b>${p2.toFixed(2)}%</b> (1ª vs. 2ª metade do período) — ${(d2<d1&&w2<w1&&p2<p1)?'as três caindo, sinal de melhora real':'sem melhora consistente nas três'}.`;
+    }
+  }
+}
+
+function renderApvOverview(data, campinasData, apvTotalMensal){
   const b = data.baseline;
   const topModel = data.byModel[0];
   const worstPod = data.podRanking.worst[0];
@@ -1614,23 +1673,8 @@ function renderApvOverview(data){
     <div class="hero-card c-claim"><div class="hero-eye">POD</div><div class="hero-num">${b.pod.toFixed(2)}%</div></div>
   `;
 
-  trendLineChart('c-apvOverviewTrend', {
-    labels: data.weekly.labels,
-    series: [
-      { name: 'Damage', color: 'var(--critical)', values: data.weekly.damage },
-      { name: 'Wash', color: 'var(--blue)', values: data.weekly.wash },
-    ],
-    height: 190,
-  });
-  const wkD = data.weekly.damage, wkW = data.weekly.wash;
-  if (wkD.length >= 4) {
-    const half = Math.floor(wkD.length/2);
-    const avg = arr => arr.reduce((a,b)=>a+b,0)/arr.length;
-    const d1 = avg(wkD.slice(0,half)), d2 = avg(wkD.slice(half));
-    const w1 = avg(wkW.slice(0,half)), w2 = avg(wkW.slice(half));
-    document.getElementById('apv-ov-trend-finding').innerHTML =
-      `Damage: <b>${d1.toFixed(2)}%</b> → <b>${d2.toFixed(2)}%</b> · Wash: <b>${w1.toFixed(2)}%</b> → <b>${w2.toFixed(2)}%</b> (1ª vs. 2ª metade do período) — ${(d2<d1&&w2<w1)?'as duas caindo, sinal de melhora real':'sem melhora consistente nas duas'}.`;
-  }
+  renderApvOverviewTrendBlock(data, apvTotalMensal, {});
+  renderApvOverviewTrendBlock(campinasData, apvTotalMensal, { suffix: '-cp' });
 
   groupedBarChart('c-apvOverviewAge', {
     labels: data.byAge.map(r => r.label),

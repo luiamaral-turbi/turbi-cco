@@ -60,7 +60,7 @@ function doGet(e) {
     } else if (endpoint === 'claim-detail') {
       data = getClaimDetail(range.start, range.end, city, params.component);
     } else if (endpoint === 'claim-overview') {
-      data = getClaimOverview(range.start, range.end);
+      data = getClaimOverview(range.start, range.end, city);
     } else {
       data = { detail: 'endpoint inválido — use ?endpoint=indisponibilidade, ?endpoint=claim-apv ou ?endpoint=claim-detail' };
     }
@@ -730,8 +730,10 @@ function buildClaimDetailResponse_(component, startDate, endDate, rowsA, rowsB) 
 /* por item (pergunta é sobre a taxonomia da view inteira, não por reserva).  */
 /* -------------------------------------------------------------------------- */
 
-/** CTE base — 1 linha por reserva avaliada, com flags has_damage/has_wash/has_pod. */
-function claimOverviewBaseCte_() {
+/** CTE base — 1 linha por reserva avaliada, com flags has_damage/has_wash/has_pod.
+ * `city` opcional: a view de reviews não tem cidade direto, por isso o LEFT JOIN com
+ * vw_frota_historico_contabil (mesmo padrão de getClaimApv/getClaimDetail). */
+function claimOverviewBaseCte_(city) {
   return (
     'WITH base AS (\n' +
     '  SELECT\n' +
@@ -742,6 +744,7 @@ function claimOverviewBaseCte_() {
     '  LEFT JOIN (SELECT DISTINCT podid, podCity FROM `turbi-dc-ops.ops_geral.vw_frota_historico_contabil`) f\n' +
     '    ON r.podid = f.podid\n' +
     '  WHERE r.dt_conclusao BETWEEN @start_date AND @end_date\n' +
+    (city ? '    AND f.podCity = @city\n' : '') +
     '),\n' +
     'per_booking AS (\n' +
     '  SELECT\n' +
@@ -765,22 +768,43 @@ function mapOverviewRateRow_(r) {
   return { label: r.label, n: Number(r.n), damage: Number(r.damage), wash: Number(r.wash), pod: Number(r.pod) };
 }
 
-function getClaimOverview(startDate, endDate) {
+/** Série de taxas (damage/wash/pod) numa granularidade qualquer — `dateExprSql` decide se é
+ * por semana, por dia, etc. Mesma ideia de indispBqDiretoSeries_, usada tanto pra tendência
+ * semanal do período filtrado quanto pra "últimos 30 dias". */
+function claimRatesSeries_(cte, dateExprSql, baseParams) {
+  var rows = runQuery_(
+    cte +
+      'SELECT ' + dateExprSql + ' AS periodo, ROUND(100*AVG(has_damage),2) damage, ' +
+      'ROUND(100*AVG(has_wash),2) wash, ROUND(100*AVG(has_pod),2) pod ' +
+      'FROM per_booking GROUP BY periodo ORDER BY periodo',
+    baseParams
+  );
+  return {
+    labels: rows.map(function (r) { return r.periodo; }),
+    damage: rows.map(function (r) { return Number(r.damage); }),
+    wash: rows.map(function (r) { return Number(r.wash); }),
+    pod: rows.map(function (r) { return Number(r.pod); }),
+  };
+}
+
+function getClaimOverview(startDate, endDate, city) {
   var baseParams = [param_('start_date', 'DATE', startDate), param_('end_date', 'DATE', endDate)];
-  var cte = claimOverviewBaseCte_();
+  if (city) baseParams.push(param_('city', 'STRING', city));
+  var cte = claimOverviewBaseCte_(city);
 
   var baseline = runQuery_(
     cte + 'SELECT COUNT(*) n, ROUND(100*AVG(has_damage),2) damage, ROUND(100*AVG(has_wash),2) wash, ROUND(100*AVG(has_pod),2) pod FROM per_booking',
     baseParams
   )[0];
 
-  var weeklyRows = runQuery_(
-    cte +
-      "SELECT FORMAT_DATE('%G-W%V', dt_conclusao) AS semana, ROUND(100*AVG(has_damage),2) damage, " +
-      'ROUND(100*AVG(has_wash),2) wash, ROUND(100*AVG(has_pod),2) pod ' +
-      'FROM per_booking GROUP BY semana ORDER BY semana',
-    baseParams
-  );
+  var weeklySeries = claimRatesSeries_(cte, "FORMAT_DATE('%G-W%V', dt_conclusao)", baseParams);
+
+  // Últimos 30 dias corridos (janela fixa, independente do período filtrado na tela) — mesmo
+  // padrão de getIndisponibilidadeOverview.
+  var last30 = last30dRange_();
+  var baseParams30 = [param_('start_date', 'DATE', last30.start), param_('end_date', 'DATE', last30.end)];
+  if (city) baseParams30.push(param_('city', 'STRING', city));
+  var last30Series = claimRatesSeries_(cte, "FORMAT_DATE('%Y-%m-%d', dt_conclusao)", baseParams30);
 
   var byCategoryRows = runQuery_(
     cte +
@@ -906,13 +930,10 @@ function getClaimOverview(startDate, endDate) {
   return {
     start_date: startDate,
     end_date: endDate,
+    city: city || null,
     baseline: { n: Number(baseline.n), damage: Number(baseline.damage), wash: Number(baseline.wash), pod: Number(baseline.pod) },
-    weekly: {
-      labels: weeklyRows.map(function (r) { return r.semana; }),
-      damage: weeklyRows.map(function (r) { return Number(r.damage); }),
-      wash: weeklyRows.map(function (r) { return Number(r.wash); }),
-      pod: weeklyRows.map(function (r) { return Number(r.pod); }),
-    },
+    weekly: weeklySeries,
+    last30d: { labels: last30Series.labels, damage: last30Series.damage, wash: last30Series.wash, pod: last30Series.pod, start: last30.start, end: last30.end },
     byCategory: byCategoryRows.map(mapOverviewRateRow_),
     byModel: byModelRows.map(mapOverviewRateRow_),
     byAge: byAgeRows.map(mapOverviewRateRow_),
@@ -961,5 +982,6 @@ function testeManual() {
   Logger.log('Claim detail wash: %s', JSON.stringify(getClaimDetail(range.start, range.end, null, 'wash')));
   Logger.log('Claim detail pod: %s', JSON.stringify(getClaimDetail(range.start, range.end, null, 'pod')));
   Logger.log('Claim detail componente inválido (esperado: detail de erro amigável): %s', JSON.stringify(getClaimDetail(range.start, range.end, null, 'foo')));
-  Logger.log('Claim overview: %s', JSON.stringify(getClaimOverview(range.start, range.end)));
+  Logger.log('Claim overview nacional: %s', JSON.stringify(getClaimOverview(range.start, range.end)));
+  Logger.log('Claim overview Campinas: %s', JSON.stringify(getClaimOverview(range.start, range.end, 'Campinas')));
 }

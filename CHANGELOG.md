@@ -4,6 +4,33 @@ Formato: data + o que mudou e por quê. Foco em decisões de arquitetura e fórm
 substituto do histórico de commits do Git, é um resumo pensado pra quem for dar manutenção sem
 querer ler o diff inteiro.
 
+## 2026-08-26 — APV → Visão Geral ganha evolução semanal (upgrade) + últimos 30 dias + Campinas
+
+- **Pedido**: replicar em Claim/APV o mesmo tratamento de evolução temporal já entregue em
+  Indisponibilidade → Visão Geral — versão simples (2 gráficos fixos, sem drill-down interativo),
+  com quebra Geral/Campinas. Fora de escopo por decisão do Lui: as páginas de drill-down
+  Damage/Wash/POD (Pareto + nuvem de palavras) não ganham dimensão temporal nesta rodada.
+- **"Tendência semanal" trocou de `trendLineChart` pra `stackedChart` com meta** — a seção antiga só
+  tinha Damage+Wash como linhas soltas, sem POD e sem comparação com meta. A nova usa o mesmo padrão
+  que a aba RMR já usa pro gráfico mensal de Claim/APV (Wash+Damage+POD empilhados + linha de Meta
+  APV Ops), só que por semana — ganho de brinde: POD e meta chegaram junto, não só a granularidade.
+- **Nova seção "Últimos 30 dias corridos"** — mesmo componente, granularidade diária, janela fixa
+  hoje-30..ontem, independente do filtro de período da página (mesma regra de Indisponibilidade).
+- **Bloco Campinas** — a Visão Geral de Claim não tinha NENHUMA quebra geográfica até agora; virou
+  a 1ª seção da página com essa quebra (só a evolução semanal/últimos 30 dias duplicam, o resto da
+  página — categorias, modelo, idade, produto, nota, ranking de POD, nuvem "Other", priorização —
+  continua só nacional, por escopo explícito).
+- **Bug de colisão de rótulo corrigido em `stackedChart`** — mesmo bug já corrigido em `lineBarChart`
+  pra Indisponibilidade (barras/valores colados quando há 30+ pontos): a largura do SVG agora cresce
+  com o número de barras (`Math.max(640, ...)`), com scroll horizontal no container. Gráficos
+  existentes (COGS, RMR, ≤9 pontos) não mudam de tamanho.
+- Backend: novo helper `claimRatesSeries_()` (mesma ideia do `indispBqDiretoSeries_` de
+  Indisponibilidade) — query genérica de taxas por qualquer granularidade de data, usada tanto pra
+  semanal quanto pra últimos 30 dias, sem duplicar SQL. `getClaimOverview()` e
+  `claimOverviewBaseCte_()` ganharam parâmetro `city` opcional (reaproveitando o mesmo `LEFT JOIN`
+  com `vw_frota_historico_contabil` que `getClaimApv()`/`getClaimDetail()` já usavam pra achar a
+  cidade do POD). `getClaimApv()` (fórmula oficial certificada) não foi tocada.
+
 ## 2026-08-23 (3) — Indisponibilidade → Visão Geral: reconstrução 100% + tabelas da APV
 
 - **Rejeitado e refeito do zero**: a 1ª versão da Visão Geral de Indisponibilidade (hero de
