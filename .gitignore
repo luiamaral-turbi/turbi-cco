@@ -8,6 +8,16 @@
 # projeto não tem build, nada disso deveria existir de propósito, mas por segurança:
 .vite/
 node_modules/
+package.json
+package-lock.json
+
+# clasp (Apps Script CLI) — .clasp.json aponta pro scriptId do projeto (não é segredo,
+# mas não precisa estar no repo público); Código.gs é uma cópia de deploy gerada a partir
+# de apps-script/Code.gs, só existe pra bater com o nome real do arquivo no projeto Apps
+# Script — nunca editar Código.gs direto, ele é sobrescrito a cada push.
+apps-script/.clasp.json
+apps-script/Código.gs
+apps-script/index.html
 
 # Segredos locais (nunca versionar) — nada disso deveria existir, mas por segurança:
 *.local

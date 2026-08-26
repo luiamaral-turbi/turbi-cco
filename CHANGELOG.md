@@ -4,6 +4,38 @@ Formato: data + o que mudou e por quê. Foco em decisões de arquitetura e fórm
 substituto do histórico de commits do Git, é um resumo pensado pra quem for dar manutenção sem
 querer ler o diff inteiro.
 
+## 2026-08-26 (3) — Bug de copiar/colar na versão logada + migração pra deploy via `clasp`
+
+- **Sintoma**: versão logada (@turbi.com.br) abria em branco, botão "Atualizar dados" não reagia a
+  nada. Console mostrava `Uncaught SyntaxError: Unexpected identifier 'Sheets'` — um erro de
+  sintaxe em qualquer lugar do `<script>` trava o carregamento do arquivo inteiro (por isso a página
+  ficava vazia e até `atualizarPaginaAtiva` aparecia como "not defined": o script nunca terminou de
+  rodar).
+- **Causa raiz**: colar o `index.html` no editor do Apps Script a partir da visualização com realce
+  de sintaxe do GitHub corrompeu um caractere de aspas invertidas (crase) perto da palavra "Sheets"
+  (`` `Sheets CSV "${sheetName}"...` ``, em `fetchSheetRows()`). Corrigido copiando da visualização
+  **raw** do GitHub em vez da visualização normal.
+- **Migração pro `@google/clasp`** (CLI oficial do Apps Script) pra eliminar essa classe de bug de
+  vez — instalado local (`npm install`, fora do git), autenticado com `lui.amaral@turbi.com.br`
+  (precisou de duas coisas específicas desta rede: `NODE_EXTRA_CA_CERTS` apontando pro
+  `corporate_ca.pem`, mesma exigência do gcloud; e habilitar a API do Apps Script em
+  `script.google.com/home/usersettings`, configuração de conta pessoal, não de projeto GCP).
+  Descoberta: o arquivo de código dentro do projeto real se chama **`Código`** (com acento), não
+  `Code` — mantido `apps-script/Code.gs` como nome canônico no repo (não vale a pena renomear
+  22+ referências em docs/changelog só por estética); o push copia pra `Código.gs` como artefato
+  gerado, fora do git (ver `.gitignore`).
+- **Regressão causada por mim durante essa migração, corrigida na hora**: `clasp deploy -i <id>`
+  aplica o `webapp.access` do `appsscript.json` NA IMPLANTAÇÃO ESPECIFICADA, sobrescrevendo o que
+  ela já tinha configurado — como o manifesto puxado do projeto estava com `"access": "DOMAIN"`
+  (config da implantação logada, criada por último), reimplantar a implantação PÚBLICA com esse
+  mesmo manifesto derrubou o acesso "Qualquer pessoa" dela por ~5 minutos, quebrando o GitHub Pages
+  pra qualquer visitante (confirmado com `curl`: a API pública passou a devolver a página de login
+  do Google em vez de JSON). Corrigido trocando `webapp.access` pra `"ANYONE_ANONYMOUS"`, push, e
+  `clasp deploy` de novo só na implantação pública — revalidado com `curl` que voltou a responder
+  JSON puro, sem redirecionar pra login. **Lição registrada no README**: o acesso não é por
+  implantação, é um campo do manifesto aplicado no momento do deploy — sempre conferir/ajustar
+  `appsscript.json` antes de rodar `clasp deploy -i <id>` numa implantação específica.
+
 ## 2026-08-26 (2) — Segunda via de hospedagem: Apps Script com login @turbi.com.br
 
 - **Pedido**: migrar do GitHub Pages (público, sem login) pra hospedagem no próprio Google Apps

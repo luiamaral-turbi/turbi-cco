@@ -82,37 +82,71 @@ Não há build. Basta abrir `index.html` num navegador (ou servir com qualquer s
 ex. `npx serve .`), desde que a constante `APPS_SCRIPT_URL` no topo do `<script>` esteja apontando
 pra uma implantação válida do Apps Script.
 
-## Como reimplantar o Apps Script (depois de editar `apps-script/Code.gs`)
+## Como reimplantar o Apps Script (depois de editar `apps-script/Code.gs` ou `index.html`)
+
+### Via `clasp` (2026-08-26 em diante — evita corrupção de copiar/colar)
+
+Configurado uma vez (`apps-script/.clasp.json`, local, fora do git — contém o `scriptId`) — precisa
+de `npm install` (instala `@google/clasp` em `node_modules/`, também fora do git) e, na rede
+corporativa, da variável `NODE_EXTRA_CA_CERTS` apontando pro mesmo `corporate_ca.pem` usado pelo
+gcloud (ver `CLAUDE.md` da raiz do workspace).
+
+1. Editar `apps-script/Code.gs` e/ou `index.html` normalmente.
+2. Copiar o conteúdo pros nomes que o projeto Apps Script realmente usa (o arquivo de código lá se
+   chama **`Código`**, não `Code` — nome legado, não vale a pena renomear):
+   ```bash
+   cp apps-script/Code.gs "apps-script/Código.gs"
+   cp index.html apps-script/index.html
+   ```
+   (esses 2 arquivos gerados ficam fora do git — só existem como artefato de push, nunca editar
+   direto neles).
+3. `clasp push --force` de dentro de `apps-script/` — sobe os 3 arquivos (`appsscript.json`,
+   `Código.gs`, `index.html`) pro "HEAD" do projeto (rascunho, ainda não visível pra quem acessa via
+   URL de implantação).
+4. **Redeploy nas 2 implantações, uma de cada vez** (`clasp deployments` lista os IDs):
+   ```bash
+   clasp deploy -i <ID_DA_IMPLANTACAO_PUBLICA> -d "descrição"
+   clasp deploy -i <ID_DA_IMPLANTACAO_LOGADA> -d "descrição"
+   ```
+
+### ⚠️ Armadilha real (já aconteceu, causou uma queda real do GitHub Pages)
+
+O acesso ("quem pode acessar") de uma implantação Web App vem do campo `webapp.access` do
+**mesmo** `appsscript.json` pra TODAS as implantações — ele não é por implantação, é do
+snapshot de versão. Isso significa: **antes de rodar `clasp deploy -i <id>`, o `webapp.access` em
+`apps-script/appsscript.json` precisa estar com o valor certo pra AQUELA implantação**, senão o
+deploy sobrescreve o acesso dela com o que estiver no arquivo:
+- Implantação pública (usada pelo GitHub Pages, `fetch()` sem login): `"access": "ANYONE_ANONYMOUS"`.
+- Implantação logada (`@turbi.com.br`): `"access": "DOMAIN"`.
+
+Fluxo seguro pra atualizar as duas: deixar `"ANYONE_ANONYMOUS"` → `push` → `deploy -i <pública>` →
+trocar pra `"DOMAIN"` → `push` → `deploy -i <logada>`. Sempre conferir com `curl` (ou abrir a URL
+pública direto) que a implantação pública continua respondendo JSON sem pedir login depois de
+qualquer deploy.
+
+### Via editor do Apps Script (manual, sempre funciona como fallback)
 
 1. Abrir o projeto em [script.google.com](https://script.google.com) (mesma conta Google usada na
    implantação atual).
-2. Colar o conteúdo atualizado de `apps-script/Code.gs` no editor (substituindo tudo), `Ctrl+S`.
-3. Se o projeto ainda não tiver o arquivo HTML da página (1ª vez configurando a versão logada):
-   Arquivo → Novo → HTML, nomear exatamente `index`, colar o conteúdo de `index.html` da raiz deste
-   repo sem nenhuma edição, `Ctrl+S`.
+2. Colar o conteúdo atualizado de `apps-script/Code.gs` no arquivo **`Código`** do editor
+   (substituindo tudo), `Ctrl+S`. Copiar da visualização **"raw"** do GitHub
+   (`raw.githubusercontent.com/luiamaral-turbi/turbi-cco/main/...`), nunca da visualização com
+   realce de sintaxe — colar de lá já corrompeu um caractere de aspas invertidas (crase) uma vez,
+   quebrando a página inteira (`SyntaxError` na primeira crase mal copiada trava o carregamento de
+   tudo que vem depois no mesmo `<script>`).
+3. Mesma coisa pro arquivo `index` (HTML) com o `index.html` da raiz do repo.
 4. Rodar a função `testeManual` pelo menos uma vez e conferir o **Registro de execução** — os números
    devem bater com os já certificados antes de seguir. Isso inclui `getClaimDetail` (Damage): a soma
    de `count` de todos os grupos deve ser da mesma ordem de grandeza do `damage_n` de `getClaimApv()`
    (não igual — um conta itens, o outro reservas distintas), e nenhuma das palavras da nuvem deve
    parecer placa/telefone/nome.
-5. `Implantar → Gerenciar implantações → editar (ícone de lápis) na implantação PÚBLICA existente →
-   Nova versão → Implantar`. **Importante**: reimplantar sem criar uma "Nova versão" mantém o
-   código antigo no ar — sempre escolher "Nova versão". Isso atualiza tanto a API pública (usada
-   pelo GitHub Pages) quanto a versão logada (se ela já existir), já que as duas rodam o mesmo
-   código — só muda o `index.html` colado dentro do projeto, que precisa ser atualizado manualmente
-   também sempre que o `index.html` da raiz do repo mudar (passo 3).
-6. A URL do Web App (campo `APPS_SCRIPT_URL` em `index.html`) só muda se uma implantação **nova**
-   (não uma versão da mesma implantação) for criada. Reimplantar a mesma implantação preserva a URL.
-7. Conferir em **"Quem pode acessar"** que a implantação PÚBLICA continua **"Qualquer pessoa"** — se
-   vier como "Qualquer pessoa dentro de turbi.com.br", o `fetch()` do GitHub Pages (site
-   público, sem sessão Google) recebe página de login do Google em vez de JSON (já aconteceu uma
-   vez nesta migração).
-8. **Criar/gerenciar a implantação logada (@turbi.com.br)** — separada da pública, feita só uma vez
-   (depois só precisa de "Nova versão" igual ao passo 5, na implantação certa):
-   `Implantar → Nova implantação → tipo "App da Web" → Executar como "Eu" → Acesso "Qualquer pessoa
-   dentro de turbi.com.br"`. A URL gerada é a nova URL "logada" pra usar no lugar do GitHub Pages —
-   ela serve a página (`index.html` colado no projeto) quando visitada sem parâmetro, mas os dados
-   continuam vindo da implantação pública de sempre (mesma `APPS_SCRIPT_URL` fixa no arquivo).
+5. `Implantar → Gerenciar implantações → editar (ícone de lápis) na implantação desejada → Nova
+   versão → Implantar`. **Importante**: reimplantar sem criar uma "Nova versão" mantém o código
+   antigo no ar. Repetir pra CADA implantação (pública e logada) — não são a mesma.
+6. Conferir em **"Quem pode acessar"** de CADA implantação antes de sair — pública = "Qualquer
+   pessoa"; logada = "Qualquer pessoa dentro de turbi.com.br". Editar uma implantação existente
+   (em vez de criar nova versão) preserva o acesso configurado nela; só o `clasp deploy` tem o
+   comportamento de sobrescrever com o manifesto (ver armadilha acima).
 
 ## Se algo quebrar — checklist
 
@@ -122,8 +156,12 @@ pra uma implantação válida do Apps Script.
 - **Erro mencionando `APPS_SCRIPT_URL`**: a URL do Web App mudou (nova implantação) ou expirou —
   pegar a URL atual em `script.google.com → Implantar → Gerenciar implantações` e atualizar a
   constante no topo do `<script>` em `index.html`.
-- **Indisponibilidade/Claim retornam página de login do Google em vez de JSON**: a implantação caiu
-  pra acesso restrito ao domínio — ver passo 6 acima.
+- **Indisponibilidade/Claim retornam página de login do Google em vez de JSON (GitHub Pages
+  quebrado)**: a implantação PÚBLICA caiu pra acesso restrito — normalmente porque um
+  `clasp deploy -i <id>` foi rodado com `appsscript.json` no estado errado (ver "Armadilha real"
+  acima). Corrigir: `webapp.access` → `"ANYONE_ANONYMOUS"` → `clasp push` → `clasp deploy -i
+  <ID_DA_IMPLANTACAO_PUBLICA>` → confirmar com `curl` que volta JSON sem redirecionar pra
+  `accounts.google.com`.
 - **COGS/Metas com erro "planilha não encontrada" ou "linha não encontrada"**: a planilha de origem
   (`103v2gA7a24QAT73yXbyTnSdWxZjAsh4bZOMzkdHEghg`) mudou de estrutura — os nomes de aba, o marcador
   `"COGS./VHC"` ou os rótulos de meta em `index.html` precisam ser conferidos contra a planilha atual.
