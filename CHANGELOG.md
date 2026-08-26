@@ -4,6 +4,27 @@ Formato: data + o que mudou e por quê. Foco em decisões de arquitetura e fórm
 substituto do histórico de commits do Git, é um resumo pensado pra quem for dar manutenção sem
 querer ler o diff inteiro.
 
+## 2026-08-26 (6) — Varredura completa: zero aspas duplas dentro de crase no arquivo inteiro
+
+- Depois de corrigir "Sheets" (entrada 3) e ver o mesmo tipo de erro reaparecer em outro ponto
+  ("Linha", entrada 5) mesmo com o `clasp push` transmitindo bytes exatos, ficou claro que o padrão
+  "crase com aspas duplas literais dentro do texto estático" era mesmo o gatilho — só que existia em
+  **78 lugares** do arquivo (a maioria em atributos HTML gerados dentro dos gráficos SVG, ex.
+  `` `<rect x="..." class="chart-svg">` ``), não só nos 2 que geraram erro visível até agora
+  (provavelmente porque só alguns caem numa posição/combinação específica que o pipeline de
+  renderização do `HtmlService` do Apps Script realmente quebra — não cheguei a confirmar a causa
+  exata do lado do Google, mas eliminar TODOS os casos resolve independente do mecanismo).
+- Trocado `="valor"` por `='valor'` em todos os atributos HTML dentro de template literals (233
+  trocas automáticas + 4 casos manuais que precisavam de atenção: `Código.gs`→`index.html` linha
+  796 "Linha" virou concatenação simples; o `data-pareto-group` do cross-filter do Pareto (que fazia
+  `replace(/"/g,'&quot;')` pra escapar aspas em rótulos) virou `replace(/'/g,'&#39;')`, consistente
+  com o novo delimitador de aspas simples; o cabeçalho "YTD (\"2026\")" da tabela de COGS virou
+  "YTD (2026)"; e a frase com aspas em "Não classificado" no texto de APV Visão Geral virou
+  `&quot;Não classificado&quot;` via entidade HTML em vez de aspas literais no JS).
+- **Confirmado**: zero ocorrências restantes de crase+aspas-duplas no arquivo inteiro (checado por
+  script, não só visualmente). Nenhuma mudança de comportamento — só o caractere de aspas usado nos
+  atributos HTML gerados, que é visualmente idêntico e funciona igual em qualquer navegador.
+
 ## 2026-08-26 (5) — Bug "Sheets" reapareceu mesmo via `clasp push` (sem copiar/colar manual)
 
 - O `SyntaxError: Unexpected identifier 'Sheets'` (ver entrada (3) abaixo) voltou a acontecer
