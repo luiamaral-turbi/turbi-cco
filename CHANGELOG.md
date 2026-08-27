@@ -4,6 +4,38 @@ Formato: data + o que mudou e por quê. Foco em decisões de arquitetura e fórm
 substituto do histórico de commits do Git, é um resumo pensado pra quem for dar manutenção sem
 querer ler o diff inteiro.
 
+## 2026-08-27 — Migração completa pro Apps Script (login @turbi.com.br), com todos os aprendizados
+
+- Depois do revert de 2026-08-26, replanejado com calma: migração de verdade, incorporando as
+  causas raiz encontradas ontem. Decisão confirmada com o Lui: **só Apps Script hospeda tudo**
+  (página + dados) atrás de login, **GitHub Pages será desativado** ao final (depois de validar
+  100% no navegador — ainda não desativado nesta entrada, ver checklist pendente).
+- **`doGet()` sem `?endpoint=`**: casca HTML mínima e fixa (zero `//`), via `HtmlService` — só
+  chama `getPageContent_()` por `google.script.run` e escreve o resultado com `document.write()`.
+  Nunca serve o HTML completo direto (é a causa raiz de ontem).
+- **Todas as chamadas de dado do front-end trocaram de `fetch()` pra `google.script.run`** — não
+  só a carga inicial da página. Achado importante desta rodada: uma vez que a própria página passa
+  a ser servida pelo Apps Script (dentro do iframe sandbox), **qualquer** `fetch()` pra essa mesma
+  implantação corre risco de CORS (não só o bootstrap) — por isso as 4 funções `fetchWebApp`,
+  `fetchClaimDetail`, `fetchIndispOverview`, `fetchClaimOverview` em `index.html` agora usam um
+  helper comum `callApi_()` que embrulha `google.script.run` numa Promise, preservando a mesma
+  assinatura/retorno de sempre (nenhum outro código do arquivo mudou — só o transporte).
+- **`apiCall_(endpoint, extra)`** em `Code.gs` — dispatch único reaproveitado tanto por
+  `doGet(?endpoint=...)` (mantido só pra eu validar por `curl`, não mais usado em produção) quanto
+  por `google.script.run` — elimina duplicação entre os dois caminhos de entrada.
+- **Validado com rigor antes de tocar a implantação real**: testado via `/dev` (token OAuth do
+  `clasp`) — `getPageContent_()`/`?endpoint=page-content` bate **exatamente** (`===`) com o
+  `index.html` da raiz, sintaxe dos 2 blocos `<script>` limpa, e `apiCall_` respondendo dado real
+  pra `indisponibilidade`.
+- Implantado na implantação logada já existente (a original, não a criada por engano em
+  2026-08-26). A implantação pública (GitHub Pages) **não foi tocada** nesta rodada — mantida como
+  está até o teste manual completo no navegador ser confirmado.
+- **Pendente, próximo passo obrigatório**: teste manual completo do Lui no navegador (todas as
+  abas, filtros, botão de atualizar, cross-filter) — é a única forma de validar `google.script.run`
+  de ponta a ponta (não dá pra testar por `curl`/API, só dentro de um navegador de verdade). Só
+  depois disso: desativar GitHub Pages, consolidar/apagar as implantações extras, e atualizar o
+  `README.md` com a arquitetura final de implantação única.
+
 ## 2026-08-26 (11) — Revertida a hospedagem logada: volta pra API pura, GitHub Pages intacto
 
 - Depois de 6 rodadas de correção na mesma tentativa (entradas 3 a 10 abaixo — bug de comentário

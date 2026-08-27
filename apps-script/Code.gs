@@ -1,11 +1,31 @@
 /**
- * RMR OPS — Web App que expõe Indisponibilidade e Claim/APV (BigQuery) como JSON. API pura —
- * ver `CHANGELOG.md` (2026-08-26) pro histórico de uma tentativa de também servir a própria
- * página por aqui (hospedagem logada @turbi.com.br), revertida por ora: o `HtmlService` do Apps
- * Script se mostrou instável pra servir HTML grande/complexo como resposta de Web App (cortava
- * linha no primeiro `//`, e depois o `google.script.run` esbarrava em CORS entre formatos de
- * URL) — decisão foi voltar ao estado simples e confiável (só API) e desenhar a hospedagem
- * logada de novo, com calma, numa rodada futura.
+ * RMR OPS — Web App único (login @turbi.com.br obrigatório) que serve a própria página E expõe
+ * Indisponibilidade/Claim/APV (BigQuery) como dado — pra tudo, front-end e API.
+ *
+ * ARQUITETURA (2026-08-27, depois de uma migração cheia de aprendizados em 2026-08-26 — ver
+ * CHANGELOG.md pro histórico completo das causas raiz encontradas):
+ *   - `doGet(e)` sem `?endpoint=` devolve uma casca HTML minúscula e fixa (poucas linhas, zero
+ *     `//`) via HtmlService — NUNCA o HTML completo. `HtmlService.createHtmlOutputFromFile()` e
+ *     `HtmlService.createHtmlOutput(stringGrande)` corrompem HTML grande/complexo servido como
+ *     resposta de Web App (cortam qualquer linha no primeiro `//`, mesmo dentro de uma URL) — bug
+ *     do próprio mecanismo de resposta HTTP do HtmlService, não do jeito de ler/guardar o
+ *     conteúdo. A casca só faz uma coisa: chamar `getPageContent_()` via `google.script.run` e
+ *     escrever o resultado na página com `document.write()`.
+ *   - O conteúdo REAL da página vem de `INDEX_HTML_CONTENT`, uma string pura definida em
+ *     `IndexHtml.gs` (arquivo `.gs`, nunca `.html` do projeto — gerado automaticamente a partir do
+ *     `index.html` da raiz do repo a cada `clasp push`, nunca editado à mão).
+ *   - Todas as chamadas de dado que o front-end faz (`fetchWebApp`, `fetchIndispOverview`,
+ *     `fetchClaimOverview`, `fetchClaimDetail`) usam `google.script.run` chamando `apiCall_()`
+ *     abaixo — NÃO `fetch()`. Motivo: uma vez que a própria página é servida pelo Apps Script
+ *     (dentro do iframe sandbox que o HtmlService usa), `fetch()` pra qualquer URL desta mesma
+ *     implantação pode ser bloqueado por CORS — `ScriptApp.getService().getUrl()` devolve um
+ *     formato de URL (`/a/turbi.com.br/macros/s/ID/exec`) diferente do formato real que o
+ *     navegador usa pra carregar a página (`/a/macros/turbi.com.br/s/ID/exec`, segmentos
+ *     trocados), e o navegador trata como origens diferentes. `google.script.run` não depende de
+ *     montar nenhuma URL — não sofre disso.
+ *   - `doGet(e)` COM `?endpoint=` continua respondendo JSON via `ContentService` (mesmo formato de
+ *     sempre) — mantido só pra eu conseguir validar por `curl`/Apps Script API fora do navegador;
+ *     o front-end em produção não usa mais esse caminho.
  *
  * Réplica exata das fórmulas já validadas em:
  *   Claudinho/Turbi/Reuniao De Resultados - OPS/automacao/backend/queries/indisponibilidade.py
@@ -14,13 +34,14 @@
  * Requisitos antes de implantar:
  *   1. No editor do Apps Script: Serviços (+) → adicionar "BigQuery API" (serviço avançado).
  *   2. Implantar → Gerenciar implantações → implantação ativa → Executar como "Eu" → Acesso
- *      "Qualquer pessoa". Usada pelo GitHub Pages (que serve a página estática de verdade).
+ *      "Qualquer pessoa dentro de turbi.com.br". Essa é a ÚNICA implantação — não existe mais
+ *      hospedagem pública/GitHub Pages em paralelo.
  *   3. Na primeira execução, autorizar com a conta lui.amaral@turbi.com.br (mesma conta que já lê
  *      turbi-dc-ops via gcloud) — não precisa de service account nem credencial nova.
  *
- * Importante: ContentService sempre responde HTTP 200, mesmo em erro — por isso todo erro vem
- * como corpo { "detail": "..." }. O front-end (index.html) trata isso explicitamente, não via
- * res.ok (que não existe aqui).
+ * Importante: erros de negócio (não excepcionais) continuam vindo como `{ "detail": "..." }` no
+ * corpo da resposta (JSON ou retorno de `google.script.run`), nunca como HTTP de erro — o
+ * front-end trata isso explicitamente em cada função `fetch*`.
  */
 
 var PROJECT_ID = 'turbi-dc-ops';
@@ -52,29 +73,61 @@ var CATEGORIAS = [
 
 function doGet(e) {
   var params = (e && e.parameter) || {};
-  try {
-    var endpoint = params.endpoint;
-    var range = defaultRange_(params.start_date, params.end_date);
-    var city = params.city || null;
+  var endpoint = params.endpoint;
 
-    var data;
-    if (endpoint === 'indisponibilidade') {
-      data = getIndisponibilidade(range.start, range.end, city);
-    } else if (endpoint === 'indisponibilidade-overview') {
-      data = getIndisponibilidadeOverview(range.start, range.end, city);
-    } else if (endpoint === 'claim-apv') {
-      data = getClaimApv(range.start, range.end, city);
-    } else if (endpoint === 'claim-detail') {
-      data = getClaimDetail(range.start, range.end, city, params.component);
-    } else if (endpoint === 'claim-overview') {
-      data = getClaimOverview(range.start, range.end, city);
-    } else {
-      data = { detail: 'endpoint inválido — use ?endpoint=indisponibilidade, ?endpoint=claim-apv ou ?endpoint=claim-detail' };
-    }
-    return jsonOutput_(data);
-  } catch (err) {
-    return jsonOutput_({ detail: String(err && err.message ? err.message : err) });
+  // Sem ?endpoint= → casca HTML minúscula e fixa (zero `//`, nunca o HTML completo — ver
+  // comentário no topo do arquivo pro porquê). O conteúdo real chega via google.script.run.
+  if (!endpoint) {
+    var bootstrap =
+      '<!doctype html><html><head><meta name="viewport" content="width=device-width, initial-scale=1">' +
+      '<title>RMR - Painel ao vivo</title></head><body>' +
+      '<script>' +
+      'google.script.run' +
+      '.withSuccessHandler(function(html){document.open();document.write(html);document.close();})' +
+      '.withFailureHandler(function(err){document.body.textContent="Falha ao carregar a pagina: " + err.message;})' +
+      '.getPageContent_();' +
+      '</script></body></html>';
+    return HtmlService.createHtmlOutput(bootstrap).setTitle('RMR - Painel ao vivo');
   }
+
+  return jsonOutput_(apiCall_(endpoint, params));
+}
+
+/** Dispatch único de dado — chamado tanto por doGet (?endpoint=, via URL/curl) quanto por
+ * google.script.run (front-end em produção, ver fetch* em index.html). `extra` aceita
+ * start_date/end_date/city/component, mesmos nomes de sempre. */
+function apiCall_(endpoint, extra) {
+  extra = extra || {};
+  try {
+    var range = defaultRange_(extra.start_date, extra.end_date);
+    var city = extra.city || null;
+
+    if (endpoint === 'page-content') {
+      // Só pra eu validar por curl que INDEX_HTML_CONTENT bate exato com o index.html da raiz,
+      // sem precisar de navegador — o front-end em produção nunca chama isso (usa
+      // getPageContent_ via google.script.run direto, ver doGet()).
+      return { html: INDEX_HTML_CONTENT };
+    } else if (endpoint === 'indisponibilidade') {
+      return getIndisponibilidade(range.start, range.end, city);
+    } else if (endpoint === 'indisponibilidade-overview') {
+      return getIndisponibilidadeOverview(range.start, range.end, city);
+    } else if (endpoint === 'claim-apv') {
+      return getClaimApv(range.start, range.end, city);
+    } else if (endpoint === 'claim-detail') {
+      return getClaimDetail(range.start, range.end, city, extra.component);
+    } else if (endpoint === 'claim-overview') {
+      return getClaimOverview(range.start, range.end, city);
+    }
+    return { detail: 'endpoint inválido — use indisponibilidade, claim-apv, claim-detail, claim-overview ou indisponibilidade-overview' };
+  } catch (err) {
+    return { detail: String(err && err.message ? err.message : err) };
+  }
+}
+
+/** Chamada via google.script.run pela casca de doGet() — devolve INDEX_HTML_CONTENT puro
+ * (string de IndexHtml.gs, nunca tocada por HtmlService). */
+function getPageContent_() {
+  return INDEX_HTML_CONTENT;
 }
 
 function jsonOutput_(obj) {

@@ -613,9 +613,9 @@
 </div>
 
 <script>
-// ── Configuração — únicas 2 linhas que mudam se o Web App do Apps Script for reimplantado
-// (URL nova) ou se a planilha de origem mudar de ID. Ver README.md / Runbook no Obsidian. ──
-const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbzS-a8q7WFtFB3KKithEPafj_pYKO8Oa4sjm41zneTLyfrHfKRwukBcsqWDGlJe7GdYHw/exec';
+// ── Configuração — única linha que muda se a planilha de origem mudar de ID. Ver README.md /
+// Runbook no Obsidian. (Não há mais URL de Apps Script pra configurar aqui — a página roda
+// dentro do próprio Apps Script, os dados vêm via google.script.run, ver callApi_ abaixo.) ──
 const SHARED_SHEET_ID = '103v2gA7a24QAT73yXbyTnSdWxZjAsh4bZOMzkdHEghg';
 
 // ── Tooltip customizado (delegação de evento) ──
@@ -683,49 +683,44 @@ function slug(s){ return s.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'')
 
 function round2(n){ return Math.round(n * 100) / 100; }
 
+// Ponte com o backend — google.script.run, não fetch(). A página roda dentro do iframe sandbox
+// que o próprio Apps Script usa pra servir HTML; fetch() daqui pra qualquer URL desta mesma
+// implantação pode ser bloqueado por CORS (ScriptApp.getService().getUrl() devolve um formato de
+// URL diferente do que o navegador usou pra carregar a página). google.script.run não depende de
+// montar URL nenhuma — não sofre disso. Ver comentário no topo de apps-script/Code.gs.
+function callApi_(endpoint, extra){
+  return new Promise((resolve, reject) => {
+    google.script.run
+      .withSuccessHandler(resolve)
+      .withFailureHandler(err => reject(new Error(err && err.message ? err.message : String(err))))
+      .apiCall_(endpoint, extra || {});
+  });
+}
+
 async function fetchWebApp(endpoint, city){
-  if (!APPS_SCRIPT_URL || APPS_SCRIPT_URL.indexOf('REPLACE_WITH') === 0) {
-    throw new Error('APPS_SCRIPT_URL não configurada — cole a URL do Web App do Apps Script no topo do script.');
-  }
-  const params = new URLSearchParams({ endpoint });
-  if (city) params.set('city', city);
-  const res = await fetch(`${APPS_SCRIPT_URL}?${params.toString()}`);
-  if (!res.ok) throw new Error(`${endpoint}${city ? ' ('+city+')' : ''}: HTTP ${res.status}`);
-  const data = await res.json();
-  // O Web App do Apps Script sempre responde HTTP 200, mesmo em erro — o erro vem
-  // como {detail: "..."} no corpo, não como status HTTP (diferente do FastAPI antigo).
+  const data = await callApi_(endpoint, { city });
+  // O backend sempre devolve normalmente, mesmo em erro de negócio — o erro vem como
+  // {detail: "..."} no corpo, não como exceção (diferente de erro de execução real).
   if (data && data.detail) throw new Error(`${endpoint}${city ? ' ('+city+')' : ''}: ${data.detail}`);
   return data;
 }
 
-// Fetch dedicado do drill-down (não reaproveita fetchWebApp — evita qualquer risco de
+// Chamada dedicada do drill-down (não reaproveita fetchWebApp — evita qualquer risco de
 // regressão nos 4 usos já validados de indisponibilidade/claim-apv).
 async function fetchClaimDetail(component, startDate, endDate, city){
-  const params = new URLSearchParams({ endpoint: 'claim-detail', component, start_date: startDate, end_date: endDate });
-  if (city) params.set('city', city);
-  const res = await fetch(`${APPS_SCRIPT_URL}?${params.toString()}`);
-  if (!res.ok) throw new Error(`claim-detail (${component}): HTTP ${res.status}`);
-  const data = await res.json();
+  const data = await callApi_('claim-detail', { start_date: startDate, end_date: endDate, city, component });
   if (data && data.detail) throw new Error(`claim-detail (${component}): ${data.detail}`);
   return data;
 }
 
 async function fetchIndispOverview(startDate, endDate, city){
-  const params = new URLSearchParams({ endpoint: 'indisponibilidade-overview', start_date: startDate, end_date: endDate });
-  if (city) params.set('city', city);
-  const res = await fetch(`${APPS_SCRIPT_URL}?${params.toString()}`);
-  if (!res.ok) throw new Error(`indisponibilidade-overview${city ? ' ('+city+')' : ''}: HTTP ${res.status}`);
-  const data = await res.json();
+  const data = await callApi_('indisponibilidade-overview', { start_date: startDate, end_date: endDate, city });
   if (data && data.detail) throw new Error(`indisponibilidade-overview${city ? ' ('+city+')' : ''}: ${data.detail}`);
   return data;
 }
 
 async function fetchClaimOverview(startDate, endDate, city){
-  const params = new URLSearchParams({ endpoint: 'claim-overview', start_date: startDate, end_date: endDate });
-  if (city) params.set('city', city);
-  const res = await fetch(`${APPS_SCRIPT_URL}?${params.toString()}`);
-  if (!res.ok) throw new Error(`claim-overview${city ? ' ('+city+')' : ''}: HTTP ${res.status}`);
-  const data = await res.json();
+  const data = await callApi_('claim-overview', { start_date: startDate, end_date: endDate, city });
   if (data && data.detail) throw new Error(`claim-overview${city ? ' ('+city+')' : ''}: ${data.detail}`);
   return data;
 }
