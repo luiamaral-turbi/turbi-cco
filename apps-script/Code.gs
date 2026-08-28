@@ -9,13 +9,13 @@
  *     `HtmlService.createHtmlOutput(stringGrande)` corrompem HTML grande/complexo servido como
  *     resposta de Web App (cortam qualquer linha no primeiro `//`, mesmo dentro de uma URL) — bug
  *     do próprio mecanismo de resposta HTTP do HtmlService, não do jeito de ler/guardar o
- *     conteúdo. A casca só faz uma coisa: chamar `getPageContent_()` via `google.script.run` e
+ *     conteúdo. A casca só faz uma coisa: chamar `getPageContent()` via `google.script.run` e
  *     escrever o resultado na página com `document.write()`.
  *   - O conteúdo REAL da página vem de `INDEX_HTML_CONTENT`, uma string pura definida em
  *     `IndexHtml.gs` (arquivo `.gs`, nunca `.html` do projeto — gerado automaticamente a partir do
  *     `index.html` da raiz do repo a cada `clasp push`, nunca editado à mão).
  *   - Todas as chamadas de dado que o front-end faz (`fetchWebApp`, `fetchIndispOverview`,
- *     `fetchClaimOverview`, `fetchClaimDetail`) usam `google.script.run` chamando `apiCall_()`
+ *     `fetchClaimOverview`, `fetchClaimDetail`) usam `google.script.run` chamando `apiCall()`
  *     abaixo — NÃO `fetch()`. Motivo: uma vez que a própria página é servida pelo Apps Script
  *     (dentro do iframe sandbox que o HtmlService usa), `fetch()` pra qualquer URL desta mesma
  *     implantação pode ser bloqueado por CORS — `ScriptApp.getService().getUrl()` devolve um
@@ -23,6 +23,10 @@
  *     navegador usa pra carregar a página (`/a/macros/turbi.com.br/s/ID/exec`, segmentos
  *     trocados), e o navegador trata como origens diferentes. `google.script.run` não depende de
  *     montar nenhuma URL — não sofre disso.
+ *   - ATENÇÃO: qualquer função chamada via `google.script.run` (`apiCall`, `getPageContent`) NÃO
+ *     PODE terminar em `_` — o Apps Script trata isso como "privado" e esconde do lado cliente
+ *     (erro real visto em produção: "apiCall_ is not a function"). Funções internas de verdade
+ *     (`runQuery_`, `defaultRange_` etc.) continuam com `_`, só as duas chamadas pelo cliente não.
  *   - `doGet(e)` COM `?endpoint=` continua respondendo JSON via `ContentService` (mesmo formato de
  *     sempre) — mantido só pra eu conseguir validar por `curl`/Apps Script API fora do navegador;
  *     o front-end em produção não usa mais esse caminho.
@@ -85,18 +89,24 @@ function doGet(e) {
       'google.script.run' +
       '.withSuccessHandler(function(html){document.open();document.write(html);document.close();})' +
       '.withFailureHandler(function(err){document.body.textContent="Falha ao carregar a pagina: " + err.message;})' +
-      '.getPageContent_();' +
+      '.getPageContent();' +
       '</script></body></html>';
     return HtmlService.createHtmlOutput(bootstrap).setTitle('RMR - Painel ao vivo');
   }
 
-  return jsonOutput_(apiCall_(endpoint, params));
+  return jsonOutput_(apiCall(endpoint, params));
 }
 
 /** Dispatch único de dado — chamado tanto por doGet (?endpoint=, via URL/curl) quanto por
  * google.script.run (front-end em produção, ver fetch* em index.html). `extra` aceita
- * start_date/end_date/city/component, mesmos nomes de sempre. */
-function apiCall_(endpoint, extra) {
+ * start_date/end_date/city/component, mesmos nomes de sempre.
+ *
+ * IMPORTANTE: nome SEM `_` no final de propósito — funções terminadas em `_` são tratadas
+ * pelo Apps Script como "privadas" e ficam invisíveis pro `google.script.run` do lado
+ * cliente (erro real visto em produção: "apiCall_ is not a function" / "getPageContent_ is
+ * not a function"). Qualquer função chamada via `google.script.run` (esta e `getPageContent`
+ * abaixo) NÃO PODE terminar em `_`, mesmo sendo só usada internamente pelo projeto. */
+function apiCall(endpoint, extra) {
   extra = extra || {};
   try {
     var range = defaultRange_(extra.start_date, extra.end_date);
@@ -105,7 +115,7 @@ function apiCall_(endpoint, extra) {
     if (endpoint === 'page-content') {
       // Só pra eu validar por curl que INDEX_HTML_CONTENT bate exato com o index.html da raiz,
       // sem precisar de navegador — o front-end em produção nunca chama isso (usa
-      // getPageContent_ via google.script.run direto, ver doGet()).
+      // getPageContent via google.script.run direto, ver doGet()).
       return { html: INDEX_HTML_CONTENT };
     } else if (endpoint === 'indisponibilidade') {
       return getIndisponibilidade(range.start, range.end, city);
@@ -125,8 +135,9 @@ function apiCall_(endpoint, extra) {
 }
 
 /** Chamada via google.script.run pela casca de doGet() — devolve INDEX_HTML_CONTENT puro
- * (string de IndexHtml.gs, nunca tocada por HtmlService). */
-function getPageContent_() {
+ * (string de IndexHtml.gs, nunca tocada por HtmlService). Nome sem `_` — ver comentário em
+ * apiCall() acima sobre por que isso é obrigatório pro google.script.run enxergar a função. */
+function getPageContent() {
   return INDEX_HTML_CONTENT;
 }
 

@@ -693,36 +693,60 @@ function callApi_(endpoint, extra){
     google.script.run
       .withSuccessHandler(resolve)
       .withFailureHandler(err => reject(new Error(err && err.message ? err.message : String(err))))
-      .apiCall_(endpoint, extra || {});
+      .apiCall(endpoint, extra || {});
   });
 }
 
+// O BigQuery já mostrou, mais de uma vez, devolver 0 linhas por um instante (cold start do
+// job) pra uma query com dado real — a retentativa imediata idêntica sempre trouxe o dado
+// certo. `withEmptyRetry_` reage a isso: se a 1ª resposta vier vazia (segundo `isEmpty`),
+// tenta mais uma vez antes de aceitar o resultado (evita expor esse blip como tela quebrada).
+async function withEmptyRetry_(loadFn, isEmpty){
+  const first = await loadFn();
+  if (!isEmpty(first)) return first;
+  await new Promise(r => setTimeout(r, 600));
+  const second = await loadFn();
+  return isEmpty(second) ? first : second;
+}
+
 async function fetchWebApp(endpoint, city){
-  const data = await callApi_(endpoint, { city });
-  // O backend sempre devolve normalmente, mesmo em erro de negócio — o erro vem como
-  // {detail: "..."} no corpo, não como exceção (diferente de erro de execução real).
-  if (data && data.detail) throw new Error(`${endpoint}${city ? ' ('+city+')' : ''}: ${data.detail}`);
-  return data;
+  const load = async () => {
+    const data = await callApi_(endpoint, { city });
+    // O backend sempre devolve normalmente, mesmo em erro de negócio — o erro vem como
+    // {detail: "..."} no corpo, não como exceção (diferente de erro de execução real).
+    if (data && data.detail) throw new Error(`${endpoint}${city ? ' ('+city+')' : ''}: ${data.detail}`);
+    return data;
+  };
+  return withEmptyRetry_(load, d => Array.isArray(d.meses) && d.meses.length === 0);
 }
 
 // Chamada dedicada do drill-down (não reaproveita fetchWebApp — evita qualquer risco de
 // regressão nos 4 usos já validados de indisponibilidade/claim-apv).
 async function fetchClaimDetail(component, startDate, endDate, city){
-  const data = await callApi_('claim-detail', { start_date: startDate, end_date: endDate, city, component });
-  if (data && data.detail) throw new Error(`claim-detail (${component}): ${data.detail}`);
-  return data;
+  const load = async () => {
+    const data = await callApi_('claim-detail', { start_date: startDate, end_date: endDate, city, component });
+    if (data && data.detail) throw new Error(`claim-detail (${component}): ${data.detail}`);
+    return data;
+  };
+  return withEmptyRetry_(load, d => Array.isArray(d.groups) && d.groups.length === 0);
 }
 
 async function fetchIndispOverview(startDate, endDate, city){
-  const data = await callApi_('indisponibilidade-overview', { start_date: startDate, end_date: endDate, city });
-  if (data && data.detail) throw new Error(`indisponibilidade-overview${city ? ' ('+city+')' : ''}: ${data.detail}`);
-  return data;
+  const load = async () => {
+    const data = await callApi_('indisponibilidade-overview', { start_date: startDate, end_date: endDate, city });
+    if (data && data.detail) throw new Error(`indisponibilidade-overview${city ? ' ('+city+')' : ''}: ${data.detail}`);
+    return data;
+  };
+  return withEmptyRetry_(load, d => Array.isArray(d.weekly?.labels) && d.weekly.labels.length === 0);
 }
 
 async function fetchClaimOverview(startDate, endDate, city){
-  const data = await callApi_('claim-overview', { start_date: startDate, end_date: endDate, city });
-  if (data && data.detail) throw new Error(`claim-overview${city ? ' ('+city+')' : ''}: ${data.detail}`);
-  return data;
+  const load = async () => {
+    const data = await callApi_('claim-overview', { start_date: startDate, end_date: endDate, city });
+    if (data && data.detail) throw new Error(`claim-overview${city ? ' ('+city+')' : ''}: ${data.detail}`);
+    return data;
+  };
+  return withEmptyRetry_(load, d => Array.isArray(d.weekly?.labels) && d.weekly.labels.length === 0);
 }
 
 // ── CSV do Google Sheets (parser simples RFC4180 — aspas, campos com vírgula/quebra de linha) ──
@@ -1216,6 +1240,11 @@ function renderIndisponibilidade(data, metaMaps, opts){
   opts = opts || {};
   const suf = opts.suffix || '';
   const titlePrefix = opts.titlePrefix || '';
+  if (!data.meses.length) {
+    document.getElementById('indisp-heroes'+suf).innerHTML =
+      `<div class='hero-card'><div class='hero-eye'>${titlePrefix}Indisponibilidade</div><div class='hero-num'>—</div><div class='hero-sub'>Sem dado do BigQuery pro período — clique em "Atualizar dados" de novo.</div></div>`;
+    return;
+  }
   const labels = data.meses.map(mesLabel);
   const meta = data.meses.map(ym => metaMaps.indisp[ym] ?? null);
   const metaAnual = metaMaps.indispAnual ?? null;
@@ -1260,6 +1289,11 @@ function renderClaimApv(data, metaMaps, opts){
   opts = opts || {};
   const suf = opts.suffix || '';
   const titlePrefix = opts.titlePrefix || '';
+  if (!data.meses.length) {
+    document.getElementById('claim-heroes'+suf).innerHTML =
+      `<div class='hero-card c-claim'><div class='hero-eye'>${titlePrefix}APV</div><div class='hero-num'>—</div><div class='hero-sub'>Sem dado do BigQuery pro período — clique em "Atualizar dados" de novo.</div></div>`;
+    return;
+  }
   const labels = data.meses.map(mesLabel);
   const metaOps = data.meses.map(ym => metaMaps.apvTotal[ym] ?? null);
   const metaWashArr = data.meses.map(ym => metaMaps.apvWash[ym] ?? null);
