@@ -512,13 +512,41 @@ function getIndisponibilidadeOverview(startDate, endDate, city) {
     .filter(function (r) { return r.nVeiculos >= INDISP_MIN_VEICULOS; })
     .sort(function (a, b) { return b.pct - a.pct; });
 
+  // Detalhamento por categoria de cada semana/dia — indispBqDiretoSeries_ já calcula
+  // segCatByPeriodCat/totalSegByPeriod pras duas séries, só não eram expostos até agora.
+  // Mesmo formato {name,color,values[]} de getIndisponibilidade(), só que values[] é indexado
+  // por semana/dia em vez de por mês. Usado pela tabela dinâmica (semanal/últimos 30 dias) da
+  // Indisponibilidade → Visão Geral no front-end.
+  var weeklyCategorias = CATEGORIAS.map(function (cat) {
+    return {
+      name: cat.name,
+      color: cat.color,
+      values: weeks.map(function (w) {
+        var totalSeg = totalSegByWeek[w] || 1;
+        var segCat = segCatByWeekCat[w + '|' + cat.status] || 0;
+        return round2_((100 * segCat) / totalSeg);
+      }),
+    };
+  });
+  var last30Categorias = CATEGORIAS.map(function (cat) {
+    return {
+      name: cat.name,
+      color: cat.color,
+      values: last30Series.labels.map(function (d) {
+        var totalSeg = last30Series.totalSegByPeriod[d] || 1;
+        var segCat = last30Series.segCatByPeriodCat[d + '|' + cat.status] || 0;
+        return round2_((100 * segCat) / totalSeg);
+      }),
+    };
+  });
+
   return {
     start_date: startDate,
     end_date: endDate,
     city: city || null,
     baseline: { bqDireto: bqDiretoPeriodo, totalSegPeriodo: totalSegPeriodo },
-    weekly: { labels: weeks, bqDireto: weeklyBqDireto },
-    last30d: { labels: last30Series.labels, bqDireto: last30Series.bqDireto, start: last30.start, end: last30.end },
+    weekly: { labels: weeks, bqDireto: weeklyBqDireto, categorias: weeklyCategorias },
+    last30d: { labels: last30Series.labels, bqDireto: last30Series.bqDireto, start: last30.start, end: last30.end, categorias: last30Categorias },
     byCategory: byCategory,
     byResponsavel: byResponsavel,
     substatusByCategory: substatusByCategory,

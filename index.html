@@ -104,6 +104,27 @@
   .cc-budget { font-size:10px; color:var(--muted); font-weight:400; font-variant-numeric:tabular-nums; }
   .cc-good { color:var(--good); }
   .cc-bad { color:var(--critical); }
+  /* border-collapse:collapse quebra position:sticky (bug conhecido do Chrome/Firefox — o
+     navegador não repinta a coluna fixa corretamente, deixando conteúdo já rolado aparecer por
+     trás dela). border-separate + spacing 0 resolve sem mudar a aparência (cada <td> já tem
+     seu próprio border-bottom, então não sobra espaço entre linhas). */
+  table.dtbl.freeze-cat { border-collapse: separate; border-spacing: 0; }
+  /* Causa raiz do vazamento que sobrou mesmo depois do fix acima: o container que rola
+     (.tbl-wrap.card) tem padding-left do .card, e esse padding faz parte da própria "janela"
+     de rolagem (não é cortado) — o conteúdo já rolado passa visível por trás da coluna fixa
+     exatamente nessa faixa de 17px, porque a coluna sticky (left:0) começa DEPOIS do padding,
+     não cobre ele. Tira o padding do container que rola e recoloca na 1ª coluna — mesmo
+     espaçamento visual, mas agora dentro da própria coluna fixa, sem faixa "sem dono". */
+  .freeze-wrap { padding-left: 0; }
+  table.dtbl.freeze-cat td:first-child, table.dtbl.freeze-cat th:first-child {
+    position: sticky; left: 0; background: var(--surface); z-index: 1;
+    padding-left: 17px;
+    /* will-change força a coluna fixa pra sua própria camada de composição — sem isso o Chrome
+       não repinta a célula corretamente durante o scroll horizontal e deixa o conteúdo já
+       rolado "vazar" por trás dela (mesmo bug do border-collapse, forma mais teimosa). */
+    will-change: transform;
+    box-shadow: 1px 0 0 var(--line);
+  }
 
   #tt-tooltip { position:fixed; pointer-events:none; background:var(--navy); color:var(--navy-ink); font-size:12px; font-weight:600; padding:5px 10px; border-radius:6px; opacity:0; z-index:1000; transition:opacity .08s; white-space:nowrap; }
   .note { font-size:12px; color:var(--muted); margin:8px 0 16px; }
@@ -365,21 +386,26 @@
       <div class="hero-card"><div class="hero-eye">Carregando…</div><div class="hero-num">—</div></div>
     </div>
 
+    <div class="subhead">Visão mensal <span class="sub-note">igual à tabela da RMR · 1º de janeiro até ontem</span></div>
+    <div class="card"><div class="tbl-wrap"><div id="c-indispOvMonthly"></div></div><div class="legend-row"><span class="legend-item"><span class="legend-sw" style="background:var(--good)"></span>Dentro da meta</span><span class="legend-item"><span class="legend-sw" style="background:var(--critical)"></span>Acima da meta</span><span class="legend-item"><span class="legend-line"></span>Meta</span></div></div>
+    <div class="tbl-wrap card freeze-wrap" style="margin-top:14px"><table class="dtbl freeze-cat"><thead id="tbl-indisp-ov-monthly-head"></thead><tbody id="tbl-indisp-ov-monthly"></tbody></table></div>
+
     <div class="subhead">Evolução semanal — real (Cálculo BQ direto) x meta <span class="sub-note">período selecionado · barra verde = dentro da meta · vermelha = acima</span></div>
     <div class="card"><div class="tbl-wrap"><div id="c-indispOvWeekly"></div></div><div class="legend-row"><span class="legend-item"><span class="legend-sw" style="background:var(--good)"></span>Dentro da meta</span><span class="legend-item"><span class="legend-sw" style="background:var(--critical)"></span>Acima da meta</span><span class="legend-item"><span class="legend-line"></span>Meta</span></div></div>
+    <div class="tbl-wrap card freeze-wrap" style="margin-top:14px"><table class="dtbl freeze-cat"><thead id="tbl-indisp-ov-weekly-head"></thead><tbody id="tbl-indisp-ov-weekly"></tbody></table></div>
 
     <div class="subhead">Últimos 30 dias corridos <span class="sub-note">janela fixa hoje-30..ontem, independente do filtro de período acima — pra ver tendência recente</span></div>
     <div class="card"><div class="tbl-wrap"><div id="c-indispOvLast30"></div></div><div class="legend-row"><span class="legend-item"><span class="legend-sw" style="background:var(--good)"></span>Dentro da meta</span><span class="legend-item"><span class="legend-sw" style="background:var(--critical)"></span>Acima da meta</span><span class="legend-item"><span class="legend-line"></span>Meta</span></div></div>
-
-    <div class="subhead">Indisponibilidade por categoria <span class="sub-note">período selecionado · soma das categorias = Cálculo BQ direto</span></div>
-    <div class="card"><div id="c-indispOvCat"></div><div class="legend-row" id="legend-indisp-ov"></div></div>
-    <div class="tbl-wrap card" style="margin-top:14px"><table class="dtbl"><thead><tr><th>Categoria</th><th class="num">%</th><th class="num">Carros-dia</th></tr></thead><tbody id="tbl-indisp-overview-category"></tbody></table></div>
+    <div class="tbl-wrap card freeze-wrap" style="margin-top:14px"><table class="dtbl freeze-cat"><thead id="tbl-indisp-ov-last30-head"></thead><tbody id="tbl-indisp-ov-last30"></tbody></table></div>
 
     <div class="subhead">Top modelos e categoria de veículo <span class="sub-note">mín. 5 veículos distintos — evita ranking distorcido por 1-2 carros</span></div>
     <div class="grid-lines">
       <div class="card"><div class="card-title">Top modelos por taxa</div><div class="tbl-wrap"><table class="dtbl"><thead><tr><th>Modelo</th><th class="num">Veículos</th><th class="num">Taxa</th></tr></thead><tbody id="tbl-indisp-overview-model"></tbody></table></div></div>
       <div class="card"><div class="card-title">Por categoria de veículo</div><div class="tbl-wrap"><table class="dtbl"><thead><tr><th>Categoria</th><th class="num">Veículos</th><th class="num">Taxa</th></tr></thead><tbody id="tbl-indisp-overview-vehiclecategory"></tbody></table></div></div>
     </div>
+
+    <div class="subhead">Indisponibilidade por idade da frota <span class="sub-note">tempo médio de carro no período · mín. 5 veículos distintos · barra mais escura = maior indisponibilidade</span></div>
+    <div class="card"><div id="c-indispOvAge"></div></div>
 
     <div class="subhead">Ranking de POD físico <span class="sub-note">mín. 5 veículos distintos</span></div>
     <div class="grid-lines">
@@ -394,15 +420,17 @@
         <div class="hero-card"><div class="hero-eye">Carregando…</div><div class="hero-num">—</div></div>
       </div>
 
+      <div class="subhead">Visão mensal — Campinas</div>
+      <div class="card"><div class="tbl-wrap"><div id="c-indispOvMonthly-cp"></div></div></div>
+      <div class="tbl-wrap card freeze-wrap" style="margin-top:14px"><table class="dtbl freeze-cat"><thead id="tbl-indisp-ov-monthly-head-cp"></thead><tbody id="tbl-indisp-ov-monthly-cp"></tbody></table></div>
+
       <div class="subhead">Evolução semanal — Campinas</div>
       <div class="card"><div class="tbl-wrap"><div id="c-indispOvWeekly-cp"></div></div></div>
+      <div class="tbl-wrap card freeze-wrap" style="margin-top:14px"><table class="dtbl freeze-cat"><thead id="tbl-indisp-ov-weekly-head-cp"></thead><tbody id="tbl-indisp-ov-weekly-cp"></tbody></table></div>
 
       <div class="subhead">Últimos 30 dias corridos — Campinas</div>
       <div class="card"><div class="tbl-wrap"><div id="c-indispOvLast30-cp"></div></div></div>
-
-      <div class="subhead">Por categoria — Campinas</div>
-      <div class="card"><div id="c-indispOvCat-cp"></div><div class="legend-row" id="legend-indisp-ov-cp"></div></div>
-      <div class="tbl-wrap card" style="margin-top:14px"><table class="dtbl"><thead><tr><th>Categoria</th><th class="num">%</th><th class="num">Carros-dia</th></tr></thead><tbody id="tbl-indisp-overview-category-cp"></tbody></table></div>
+      <div class="tbl-wrap card freeze-wrap" style="margin-top:14px"><table class="dtbl freeze-cat"><thead id="tbl-indisp-ov-last30-head-cp"></thead><tbody id="tbl-indisp-ov-last30-cp"></tbody></table></div>
 
       <div class="subhead">Top modelos e categoria de veículo — Campinas</div>
       <div class="grid-lines">
@@ -410,21 +438,14 @@
         <div class="card"><div class="card-title">Por categoria de veículo</div><div class="tbl-wrap"><table class="dtbl"><thead><tr><th>Categoria</th><th class="num">Veículos</th><th class="num">Taxa</th></tr></thead><tbody id="tbl-indisp-overview-vehiclecategory-cp"></tbody></table></div></div>
       </div>
 
+      <div class="subhead">Indisponibilidade por idade da frota — Campinas <span class="sub-note">mín. 5 veículos distintos</span></div>
+      <div class="card"><div id="c-indispOvAge-cp"></div></div>
+
       <div class="subhead">Ranking de POD físico — Campinas</div>
       <div class="grid-lines">
         <div class="card"><div class="card-title">Piores taxas</div><div class="tbl-wrap"><table class="dtbl"><thead><tr><th>POD</th><th class="num">Veículos</th><th class="num">Taxa</th></tr></thead><tbody id="tbl-indisp-overview-pod-worst-cp"></tbody></table></div></div>
         <div class="card"><div class="card-title">Melhores taxas</div><div class="tbl-wrap"><table class="dtbl"><thead><tr><th>POD</th><th class="num">Veículos</th><th class="num">Taxa</th></tr></thead><tbody id="tbl-indisp-overview-pod-best-cp"></tbody></table></div></div>
       </div>
-    </div>
-
-    <div class="ov-section" style="margin-top:28px">
-      <div class="ov-section-eyebrow">Detalhe</div>
-      <h3 class="ov-title">Sub-motivo dentro de uma categoria</h3>
-      <p class="ov-finding-line">Escolha uma categoria pra abrir o status×substatus por trás dela (campo já existente na mesma view, mesmo grão — não precisou de outra fonte). Nacional, sem quebra por cidade.</p>
-      <div class="card filter-row" style="margin-bottom:14px">
-        <label>Categoria: <select id="indisp-overview-category-select"></select></label>
-      </div>
-      <div class="card"><div id="c-indispOverviewSubstatus"></div></div>
     </div>
 
     </div>
@@ -1357,7 +1378,6 @@ async function atualizarDadosRmr(){
 /* ============================================================================ */
 
 let indispOverviewMonthsPopulated = false;
-let indispOverviewData = null; // guardado pra repopular o Pareto de sub-status sem refetch
 
 function populateIndispOverviewMonthSelects(){
   if (indispOverviewMonthsPopulated) return;
@@ -1377,15 +1397,34 @@ async function loadIndispOverview(){
   const endYm = document.getElementById('indisp-overview-end').value;
   const startDate = `${startYm}-01`;
   const endDate = lastDayOfMonth(endYm);
-  const [nacional, campinas, metas] = await Promise.all([
+  const [nacional, campinas, metas, mensalNacional, mensalCampinas] = await Promise.all([
     fetchIndispOverview(startDate, endDate),
     fetchIndispOverview(startDate, endDate, 'Campinas'),
     getMetasData(),
+    fetchWebApp('indisponibilidade'),
+    fetchWebApp('indisponibilidade', 'Campinas'),
   ]);
-  indispOverviewData = nacional; // Pareto de sub-motivo é nacional, sem quebra por cidade
   renderIndispOverviewBlock(nacional, metas.indisponibilidade, {});
   renderIndispOverviewBlock(campinas, metas.indisponibilidade, { suffix: '-cp' });
-  renderIndispOverviewSubstatus();
+
+  // Visão mensal — mesmo gráfico+tabela da RMR (renderIndispTable e a fórmula de
+  // labelsYtd/valuesYtd/metaYtd/colors de renderIndisponibilidade, sem modificar nenhuma das
+  // duas), só que exibidos também aqui pra não precisar trocar de aba pra ver
+  // últimos-30d + semanal + mensal.
+  const metaMaps = buildMetaMaps(metas);
+  renderIndispOverviewMonthly_('c-indispOvMonthly', 'tbl-indisp-ov-monthly-head', 'tbl-indisp-ov-monthly', mensalNacional, metaMaps.indisp, metaMaps.indispAnual);
+  renderIndispOverviewMonthly_('c-indispOvMonthly-cp', 'tbl-indisp-ov-monthly-head-cp', 'tbl-indisp-ov-monthly-cp', mensalCampinas, metaMaps.indisp, metaMaps.indispAnual);
+}
+
+function renderIndispOverviewMonthly_(elIdChart, elIdHead, elIdBody, data, metaMap, metaAnual){
+  const labels = data.meses.map(mesLabel);
+  const meta = data.meses.map(ym => metaMap[ym] ?? null);
+  const labelsYtd = labels.concat(['YTD']);
+  const valuesYtd = data.bq_direto.concat([data.ytd_bq_direto]);
+  const metaYtd = meta.concat([metaAnual ?? null]);
+  const colors = valuesYtd.map((v,i)=> (metaYtd[i]==null || v<=metaYtd[i]) ? 'var(--good)' : 'var(--critical)');
+  lineBarChart(elIdChart, { labels: labelsYtd, values: valuesYtd, meta: metaYtd, colors, name1: 'Cálculo BQ direto', decimals: 2, height: 190 });
+  renderIndispTable(elIdHead, elIdBody, data, metaMap);
 }
 
 function indispDimRowsHtml_(rows, labelKey){
@@ -1396,24 +1435,44 @@ function indispDimRowsHtml_(rows, labelKey){
   }).join('');
 }
 
-function renderIndispOverviewSubstatus(){
-  if (!indispOverviewData) return;
-  const catName = document.getElementById('indisp-overview-category-select').value;
-  const rows = (indispOverviewData.substatusByCategory && indispOverviewData.substatusByCategory[catName]) || [];
-  paretoChart('c-indispOverviewSubstatus', {
-    labels: rows.map(r => r.label), values: rows.map(r => Math.round(r.seg / 86400)), height: 220,
-  });
-}
-
 // Renderiza um bloco inteiro (Geral OU Campinas, via opts.suffix) — mesmo padrão de
 // renderIndisponibilidade()/renderClaimApv() já usados na aba RMR.
+// Tabela de categorias por semana/dia (mesmo mapa de calor da tabela mensal da RMR,
+// renderIndispTable, mas não a reaproveita: aqui a chave de cada coluna é semana/dia — não
+// mês — então a meta de cada coluna vem de metaParaData_() em vez de um metaMap plano, e não
+// existe uma coluna "YTD" natural numa janela semanal/rolante de 30 dias).
+function renderIndispOverviewSeriesTable_(elIdHead, elIdBody, periodKeys, labels, categorias, bqDireto, metaMensal){
+  const head = `<tr><th>Categoria</th>${labels.map(l=>`<th class="num">${l}</th>`).join('')}</tr>`;
+  document.getElementById(elIdHead).innerHTML = head;
+
+  // Escala de cor fixa pra tabela toda (0% a maior valor de qualquer categoria em qualquer
+  // período) — mesmo princípio da tabela mensal: compara o peso real entre categorias.
+  const allVals = categorias.flatMap(c => c.values);
+  const heatMax = Math.max(...allVals, 0.01);
+
+  let body = categorias.map(c => {
+    const cells = c.values.map(v =>
+      `<td class='num' style='background:${heatColor(v,0,heatMax)};color:${heatTextColor(v,0,heatMax)}' data-tip='${c.name}: ${v.toFixed(2)}%'>${v.toFixed(2)}%</td>`
+    ).join('');
+    return `<tr><td><span class='legend-sw' style='background:${c.color};display:inline-block;margin-right:6px'></span>${c.name}</td>${cells}</tr>`;
+  }).join('');
+
+  const bqCells = bqDireto.map((v,i) => {
+    const m = metaParaData_(periodKeys[i], metaMensal);
+    const cls = (m==null || v<=m) ? 'cc-good' : 'cc-bad';
+    return `<td class='num cc-real ${cls}'>${v.toFixed(2)}%</td>`;
+  }).join('');
+  body += `<tr class='tot'><td>Cálculo BQ direto</td>${bqCells}</tr>`;
+
+  document.getElementById(elIdBody).innerHTML = body;
+}
+
 function renderIndispOverviewBlock(data, metaIndisp, opts){
   opts = opts || {};
   const suf = opts.suffix || '';
   const b = data.baseline;
   const metaMensal = metaIndisp.mensal;
   const metaAnual = metaIndisp.anual;
-  const catsByPct = data.byCategory.slice().sort((a,b)=>b.pct-a.pct);
   const piorSemanaIdx = data.weekly.bqDireto.length
     ? data.weekly.bqDireto.reduce((best,v,i)=> v>data.weekly.bqDireto[best]?i:best, 0)
     : -1;
@@ -1432,6 +1491,11 @@ function renderIndispOverviewBlock(data, metaIndisp, opts){
     labels: data.weekly.labels.map(weekLabel_), values: data.weekly.bqDireto, meta: weeklyMeta, colors: weeklyColors,
     name1: 'Cálculo BQ direto', decimals: 2, height: 190,
   });
+  renderIndispOverviewSeriesTable_(
+    'tbl-indisp-ov-weekly-head'+suf, 'tbl-indisp-ov-weekly'+suf,
+    data.weekly.labels, data.weekly.labels.map(weekLabel_), data.weekly.categorias, data.weekly.bqDireto,
+    metaMensal
+  );
 
   const last30Meta = data.last30d.labels.map(d => metaParaData_(d, metaMensal));
   const last30Colors = data.last30d.bqDireto.map((v,i)=> (last30Meta[i]==null || v<=last30Meta[i]) ? 'var(--good)' : 'var(--critical)');
@@ -1439,31 +1503,27 @@ function renderIndispOverviewBlock(data, metaIndisp, opts){
     labels: data.last30d.labels.map(dayLabelShort_), values: data.last30d.bqDireto, meta: last30Meta, colors: last30Colors,
     name1: 'Cálculo BQ direto', decimals: 2, height: 190,
   });
-
-  stackedChart('c-indispOvCat'+suf, {
-    labels: ['Período selecionado'],
-    series: catsByPct.map(c => ({ name: c.name, color: c.color, values: [c.pct] })),
-    height: 200,
-  });
-  buildLegend('legend-indisp-ov'+suf, catsByPct.map(c => ({ name: c.name, color: c.color })));
-
-  const catHeatMax = Math.max(...catsByPct.map(c=>c.pct), 0.01);
-  document.getElementById('tbl-indisp-overview-category'+suf).innerHTML = catsByPct.map(c => {
-    const style = `background:${heatColor(c.pct,0,catHeatMax)};color:${heatTextColor(c.pct,0,catHeatMax)}`;
-    return `<tr><td><span class='legend-sw' style='background:${c.color};display:inline-block;margin-right:6px'></span>${c.name}</td><td class='num' style='${style}'>${c.pct.toFixed(2)}%</td><td class='num'>${c.carrosDia.toLocaleString('pt-BR')}</td></tr>`;
-  }).join('');
+  renderIndispOverviewSeriesTable_(
+    'tbl-indisp-ov-last30-head'+suf, 'tbl-indisp-ov-last30'+suf,
+    data.last30d.labels, data.last30d.labels.map(dayLabelShort_), data.last30d.categorias, data.last30d.bqDireto,
+    metaMensal
+  );
 
   document.getElementById('tbl-indisp-overview-model'+suf).innerHTML = indispDimRowsHtml_(data.byModel, 'label');
   document.getElementById('tbl-indisp-overview-vehiclecategory'+suf).innerHTML = indispDimRowsHtml_(data.byVehicleCategory, 'label');
+
+  // Histograma por idade da frota — mesmo padrão do "c-apvOverviewAge" da APV → Visão Geral
+  // (byAge já vem pronto da API, só nunca tinha sido desenhado aqui). Cor em mapa de calor
+  // (mesma linguagem visual das tabelas da página) já que não existe meta por faixa de idade.
+  const ageMax = Math.max(...data.byAge.map(r => r.pct), 0.01);
+  lineBarChart('c-indispOvAge'+suf, {
+    labels: data.byAge.map(r => r.label), values: data.byAge.map(r => r.pct),
+    colors: data.byAge.map(r => heatColor(r.pct, 0, ageMax)),
+    name1: 'Indisponibilidade', decimals: 2, height: 200,
+  });
+
   document.getElementById('tbl-indisp-overview-pod-worst'+suf).innerHTML = indispDimRowsHtml_(data.podRanking.worst, 'label');
   document.getElementById('tbl-indisp-overview-pod-best'+suf).innerHTML = indispDimRowsHtml_(data.podRanking.best, 'label');
-
-  if (!suf) {
-    const catSelect = document.getElementById('indisp-overview-category-select');
-    const catNames = data.byCategory.map(c => c.name);
-    catSelect.innerHTML = catNames.map(n => `<option value='${n}'>${n}</option>`).join('');
-    catSelect.value = catsByPct[0] ? catsByPct[0].name : catNames[0];
-  }
 }
 
 async function atualizarIndispOverview(){
@@ -1938,7 +1998,6 @@ document.getElementById('sidebar-backdrop').addEventListener('click', closeMobil
   ['refresh-btn', 'click', atualizarPaginaAtiva],
   ['indisp-overview-start', 'change', loadIndispOverview],
   ['indisp-overview-end', 'change', loadIndispOverview],
-  ['indisp-overview-category-select', 'change', renderIndispOverviewSubstatus],
   ['apv-overview-start', 'change', loadApvOverview],
   ['apv-overview-end', 'change', loadApvOverview],
   ['apv-damage-start', 'change', () => loadApvComponent('damage')],
