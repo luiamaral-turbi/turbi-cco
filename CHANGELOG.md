@@ -4,6 +4,24 @@ Formato: data + o que mudou e por quê. Foco em decisões de arquitetura e fórm
 substituto do histórico de commits do Git, é um resumo pensado pra quem for dar manutenção sem
 querer ler o diff inteiro.
 
+## 2026-09-03 — GitHub Pages desativado — só o Apps Script logado hospeda o painel agora
+
+- Depois de várias rodadas de teste manual confirmando a hospedagem logada (2026-08-27 a
+  2026-09-02: fix de `apiCall_`/`getPageContent_` sem `_`, retentativa a blip vazio do BigQuery,
+  tabelas semanal/últimos-30-dias/mensal com coluna congelada, histograma por idade da frota),
+  GitHub Pages foi desativado de vez: `gh api -X DELETE repos/luiamaral-turbi/turbi-cco/pages`.
+  Confirmado nos dois lados — API do GitHub e a URL pública (`luiamaral-turbi.github.io/turbi-cco`)
+  respondem 404 agora.
+- **Pendente, não feito ainda**: a implantação Apps Script que era pública (`ANYONE_ANONYMOUS`,
+  usada só pelo GitHub Pages) continua no ar — nada mais a chama, mas ela ainda serve dado de
+  BigQuery sem login pra quem tiver a URL. Precisa ser apagada ou trocada pra `DOMAIN` — ver
+  `README.md`, seção "Implantações órfãs", pra IDs e cuidado necessário (`clasp deploy -i <id>` já
+  causou queda de produção acidental 2x nesta migração ao esquecer de conferir `webapp.access`
+  antes).
+- `README.md` reescrito do zero pra descrever a arquitetura final (implantação única, login
+  obrigatório) — a versão anterior ainda descrevia GitHub Pages + API pública como arquitetura
+  corrente.
+
 ## 2026-08-27 — Migração completa pro Apps Script (login @turbi.com.br), com todos os aprendizados
 
 - Depois do revert de 2026-08-26, replanejado com calma: migração de verdade, incorporando as
