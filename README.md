@@ -184,9 +184,8 @@ Existem hoje **3 implantações além da logada em uso**, todas herdadas da migr
 
 ## Limitações conhecidas
 
-- COGS tem `meses` fixo em 7 (Jan–Jul) — precisa ser estendido manualmente no código conforme o ano
-  avança (`COGS_MONTH_STARTS`/`COGS_MESES` em `index.html`).
-- Mês corrente sempre aparece parcial (a consulta ao BigQuery vai até "ontem").
+- Mês corrente sempre aparece parcial (a consulta ao BigQuery vai até "ontem" no mensal/YTD; "hoje"
+  nas visões de últimos 30 dias — ver `CHANGELOG.md` 2026-09-15).
 - Estratificação de Claim: **Damage, Wash e POD** implementados (Pareto + nuvem de palavras). Wash
   tem só 1 grupo de nível 1 na taxonomia oficial ("Limpeza e cheiro") — o Pareto de nível 1 dele
   sempre mostra uma barra só, o de nível 2 (tipo) é o que importa.

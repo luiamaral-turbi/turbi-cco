@@ -211,12 +211,17 @@ function getIndisponibilidade(startDate, endDate, city) {
   var hasCity = !!city;
   var sql =
     'WITH filtered AS (' +
-    "  SELECT FORMAT_DATE('%Y-%m', dt_result) AS ym, status_ajustado, segundos_no_status" +
+    "  SELECT dt_result, FORMAT_DATE('%Y-%m', dt_result) AS ym, status_ajustado, segundos_no_status" +
     '  FROM `turbi-dc-ops.ops_geral.vw_frota_historico_contabil`' +
     '  WHERE dt_result BETWEEN @start_date AND @end_date' +
     (hasCity ? '  AND podCity = @city' : '') +
+    // n_dias = COUNT(DISTINCT dt_result) por mês — usado só pra "quantidade média de carros
+    // indisponíveis" (segCat/86400/n_dias). Contar dias DISTINTOS em vez de assumir dias de
+    // calendário do mês funciona igual pra mês fechado ou em andamento (mês corrente tem menos
+    // dias com dado ainda), sem precisar de lógica de calendário.
     '), totals AS (' +
-    '  SELECT ym, SUM(segundos_no_status) AS total_seg FROM filtered GROUP BY ym' +
+    '  SELECT ym, SUM(segundos_no_status) AS total_seg, COUNT(DISTINCT dt_result) AS n_dias' +
+    '  FROM filtered GROUP BY ym' +
     '), cats AS (' +
     '  SELECT ym, status_ajustado, SUM(segundos_no_status) AS seg_cat' +
     '  FROM filtered' +
@@ -225,7 +230,7 @@ function getIndisponibilidade(startDate, endDate, city) {
     "    '12-Sem Comunicacao','17-Manut. IOT','19-Falha instalação','OPERATIONAL')" +
     '  GROUP BY ym, status_ajustado' +
     ')' +
-    'SELECT c.ym, c.status_ajustado, t.total_seg, c.seg_cat ' +
+    'SELECT c.ym, c.status_ajustado, t.total_seg, c.seg_cat, t.n_dias ' +
     'FROM cats c JOIN totals t USING (ym) ' +
     'ORDER BY c.ym';
 
@@ -236,11 +241,14 @@ function getIndisponibilidade(startDate, endDate, city) {
 
   var meses = Array.from(new Set(rows.map(function (r) { return r.ym; }))).sort();
 
-  // total_seg por mês (igual para todas as categorias daquele mês).
+  // total_seg e n_dias por mês (iguais para todas as categorias daquele mês).
   var totalSegByMonth = {};
+  var diasByMonth = {};
   rows.forEach(function (r) {
     totalSegByMonth[r.ym] = Number(r.total_seg);
+    diasByMonth[r.ym] = Number(r.n_dias);
   });
+  var totalDiasYtd = meses.reduce(function (acc, m) { return acc + (diasByMonth[m] || 0); }, 0) || 1;
 
   var categorias = CATEGORIAS.map(function (cat) {
     var byMonth = {};
@@ -253,12 +261,21 @@ function getIndisponibilidade(startDate, endDate, city) {
       var segCat = byMonth[m] || 0;
       return round2_((100 * segCat) / totalSeg);
     });
+    // avgCarros = quantidade média de carros indisponíveis simultaneamente naquele mês
+    // (segCat / 86400 / dias com dado no mês — não dias de calendário, pra mês em andamento
+    // não subestimar). Só usado pelo toggle da Indisponibilidade → Visão Geral, RMR ignora.
+    var avgCarros = meses.map(function (m) {
+      var dias = diasByMonth[m] || 1;
+      var segCat = byMonth[m] || 0;
+      return round2_(segCat / 86400 / dias);
+    });
 
     var ytdSegCat = meses.reduce(function (acc, m) { return acc + (byMonth[m] || 0); }, 0);
     var ytdTotalSeg = meses.reduce(function (acc, m) { return acc + (totalSegByMonth[m] || 0); }, 0) || 1;
     var ytd = round2_((100 * ytdSegCat) / ytdTotalSeg);
+    var ytdAvgCarros = round2_(ytdSegCat / 86400 / totalDiasYtd);
 
-    return { name: cat.name, color: cat.color, values: values, ytd: ytd };
+    return { name: cat.name, color: cat.color, values: values, ytd: ytd, avgCarros: avgCarros, ytdAvgCarros: ytdAvgCarros };
   });
 
   // bq_direto = soma dos segundos BRUTOS das 12 categorias por mês, arredondando só no
@@ -272,6 +289,10 @@ function getIndisponibilidade(startDate, endDate, city) {
     var totalSeg = totalSegByMonth[m] || 1;
     return round2_((100 * (segKpiByMonth[m] || 0)) / totalSeg);
   });
+  var bqDiretoAvgCarros = meses.map(function (m) {
+    var dias = diasByMonth[m] || 1;
+    return round2_((segKpiByMonth[m] || 0) / 86400 / dias);
+  });
 
   var ytdSegCatTotal = 0;
   var ytdTotalSegAll = meses.reduce(function (acc, m) { return acc + (totalSegByMonth[m] || 0); }, 0) || 1;
@@ -281,8 +302,22 @@ function getIndisponibilidade(startDate, endDate, city) {
     });
   });
   var ytdBqDireto = round2_((100 * ytdSegCatTotal) / ytdTotalSegAll);
+  var ytdBqDiretoAvgCarros = round2_(ytdSegCatTotal / 86400 / totalDiasYtd);
 
-  return { meses: meses, categorias: categorias, bq_direto: bqDireto, ytd_bq_direto: ytdBqDireto };
+  // avg_frota = tamanho médio da frota ATIVA no bucket (totalSeg/86400/dias) — o front-end usa
+  // isso pra converter a meta (definida em %) em quantidade de carros: meta_carros =
+  // meta_pct/100 * avg_frota. Não é "% de indisponibilidade", é o denominador em carros.
+  var avgFrota = meses.map(function (m) {
+    var dias = diasByMonth[m] || 1;
+    return round2_((totalSegByMonth[m] || 0) / 86400 / dias);
+  });
+  var ytdAvgFrota = round2_(ytdTotalSegAll / 86400 / totalDiasYtd);
+
+  return {
+    meses: meses, categorias: categorias, bq_direto: bqDireto, ytd_bq_direto: ytdBqDireto,
+    bq_direto_avg_carros: bqDiretoAvgCarros, ytd_bq_direto_avg_carros: ytdBqDiretoAvgCarros,
+    avg_frota: avgFrota, ytd_avg_frota: ytdAvgFrota,
+  };
 }
 
 /* -------------------------------------------------------------------------- */
@@ -337,15 +372,16 @@ function indispOverviewBaseCte_(city) {
   );
 }
 
-/** Últimos 30 dias corridos (hoje-30 até ontem) — fixo, independente do período filtrado
- * na tela. Mesma ideia de defaultRange_(), só que sempre 30 dias, nunca desde 1º de janeiro. */
+/** Últimos 30 dias corridos (hoje-30 até HOJE, inclusive) — fixo, independente do período
+ * filtrado na tela. Mesma ideia de defaultRange_(), só que sempre 30 dias, nunca desde 1º de
+ * janeiro. Inclui o dia corrente de propósito (pedido do Lui, 2026-09-15) — o último ponto vem
+ * parcial (só o que já aconteceu até agora), esperado pra uma janela "tendência recente". */
 function last30dRange_() {
   var today = new Date();
-  var yesterday = new Date(today.getTime() - 24 * 60 * 60 * 1000);
   var start = new Date(today.getTime() - 30 * 24 * 60 * 60 * 1000);
   return {
     start: Utilities.formatDate(start, TIMEZONE, 'yyyy-MM-dd'),
-    end: Utilities.formatDate(yesterday, TIMEZONE, 'yyyy-MM-dd'),
+    end: Utilities.formatDate(today, TIMEZONE, 'yyyy-MM-dd'),
   };
 }
 
@@ -356,21 +392,26 @@ function indispBqDiretoSeries_(cte, dateExprSql, baseParams) {
   var rows = runQuery_(
     cte +
       ', totals AS (\n' +
-      '  SELECT ' + dateExprSql + ' AS periodo, SUM(segundos_no_status) AS total_seg\n' +
+      '  SELECT ' + dateExprSql + ' AS periodo, SUM(segundos_no_status) AS total_seg,' +
+      ' COUNT(DISTINCT dt_result) AS n_dias\n' +
       '  FROM base GROUP BY periodo\n' +
       '), cats AS (\n' +
       '  SELECT ' + dateExprSql + ' AS periodo, status_ajustado, SUM(segundos_no_status) AS seg_cat\n' +
       '  FROM base WHERE status_ajustado IN (' + INDISP_STATUS_LIST_SQL + ')\n' +
       '  GROUP BY periodo, status_ajustado\n' +
       ')\n' +
-      'SELECT t.periodo, t.total_seg, c.status_ajustado, c.seg_cat\n' +
+      'SELECT t.periodo, t.total_seg, t.n_dias, c.status_ajustado, c.seg_cat\n' +
       'FROM totals t LEFT JOIN cats c ON t.periodo = c.periodo\n' +
       'ORDER BY t.periodo',
     baseParams
   );
-  var totalSegByP = {}, segCatByPCat = {}, periods = [];
+  var totalSegByP = {}, nDiasByP = {}, segCatByPCat = {}, periods = [];
   rows.forEach(function (r) {
-    if (totalSegByP[r.periodo] == null) { totalSegByP[r.periodo] = Number(r.total_seg); periods.push(r.periodo); }
+    if (totalSegByP[r.periodo] == null) {
+      totalSegByP[r.periodo] = Number(r.total_seg);
+      nDiasByP[r.periodo] = Number(r.n_dias);
+      periods.push(r.periodo);
+    }
     if (r.status_ajustado) segCatByPCat[r.periodo + '|' + r.status_ajustado] = Number(r.seg_cat);
   });
   var bqDireto = periods.map(function (p) {
@@ -379,7 +420,10 @@ function indispBqDiretoSeries_(cte, dateExprSql, baseParams) {
     CATEGORIAS.forEach(function (c) { somaCats += segCatByPCat[p + '|' + c.status] || 0; });
     return round2_((100 * somaCats) / totalSeg);
   });
-  return { labels: periods, bqDireto: bqDireto, totalSegByPeriod: totalSegByP, segCatByPeriodCat: segCatByPCat };
+  return {
+    labels: periods, bqDireto: bqDireto, totalSegByPeriod: totalSegByP, segCatByPeriodCat: segCatByPCat,
+    nDiasByPeriod: nDiasByP,
+  };
 }
 
 function categoriaByStatus_(status) {
@@ -434,6 +478,7 @@ function getIndisponibilidadeOverview(startDate, endDate, city) {
   var weeklyBqDireto = weeklySeries.bqDireto;
   var totalSegByWeek = weeklySeries.totalSegByPeriod;
   var segCatByWeekCat = weeklySeries.segCatByPeriodCat;
+  var nDiasByWeek = weeklySeries.nDiasByPeriod;
 
   // Últimos 30 dias corridos (janela fixa, independente do período filtrado na tela) —
   // mesmo cálculo, granularidade diária, com seu próprio range/params.
@@ -446,6 +491,7 @@ function getIndisponibilidadeOverview(startDate, endDate, city) {
   // byResponsavel e conversão em carros-dia. total_seg do período = soma do total_seg de
   // cada semana (mesma lógica de "ytdTotalSegAll" do getIndisponibilidade oficial).
   var totalSegPeriodo = weeks.reduce(function (acc, w) { return acc + (totalSegByWeek[w] || 0); }, 0) || 1;
+  var totalDiasPeriodo = weeks.reduce(function (acc, w) { return acc + (nDiasByWeek[w] || 0); }, 0) || 1;
   var byCategory = CATEGORIAS.map(function (cat) {
     var segCat = weeks.reduce(function (acc, w) { return acc + (segCatByWeekCat[w + '|' + cat.status] || 0); }, 0);
     return {
@@ -517,6 +563,8 @@ function getIndisponibilidadeOverview(startDate, endDate, city) {
   // Mesmo formato {name,color,values[]} de getIndisponibilidade(), só que values[] é indexado
   // por semana/dia em vez de por mês. Usado pela tabela dinâmica (semanal/últimos 30 dias) da
   // Indisponibilidade → Visão Geral no front-end.
+  // avgCarros = quantidade média de carros indisponíveis simultaneamente naquele bucket
+  // (segCat/86400/dias do bucket) — toggle %/quantidade da Indisponibilidade → Visão Geral.
   var weeklyCategorias = CATEGORIAS.map(function (cat) {
     return {
       name: cat.name,
@@ -526,8 +574,27 @@ function getIndisponibilidadeOverview(startDate, endDate, city) {
         var segCat = segCatByWeekCat[w + '|' + cat.status] || 0;
         return round2_((100 * segCat) / totalSeg);
       }),
+      avgCarros: weeks.map(function (w) {
+        var dias = nDiasByWeek[w] || 1;
+        var segCat = segCatByWeekCat[w + '|' + cat.status] || 0;
+        return round2_(segCat / 86400 / dias);
+      }),
     };
   });
+  var weeklyAvgCarros = weeks.map(function (w) {
+    var dias = nDiasByWeek[w] || 1;
+    var soma = 0;
+    CATEGORIAS.forEach(function (c) { soma += segCatByWeekCat[w + '|' + c.status] || 0; });
+    return round2_(soma / 86400 / dias);
+  });
+  // avgFrota = tamanho médio da frota ativa no bucket — usado pro front-end converter a meta
+  // (definida em %) em quantidade de carros (meta_carros = meta_pct/100 * avgFrota).
+  var weeklyAvgFrota = weeks.map(function (w) {
+    var dias = nDiasByWeek[w] || 1;
+    return round2_((totalSegByWeek[w] || 0) / 86400 / dias);
+  });
+
+  var nDiasByLast30 = last30Series.nDiasByPeriod;
   var last30Categorias = CATEGORIAS.map(function (cat) {
     return {
       name: cat.name,
@@ -537,16 +604,34 @@ function getIndisponibilidadeOverview(startDate, endDate, city) {
         var segCat = last30Series.segCatByPeriodCat[d + '|' + cat.status] || 0;
         return round2_((100 * segCat) / totalSeg);
       }),
+      avgCarros: last30Series.labels.map(function (d) {
+        var dias = nDiasByLast30[d] || 1;
+        var segCat = last30Series.segCatByPeriodCat[d + '|' + cat.status] || 0;
+        return round2_(segCat / 86400 / dias);
+      }),
     };
   });
+  var last30AvgCarros = last30Series.labels.map(function (d) {
+    var dias = nDiasByLast30[d] || 1;
+    var soma = 0;
+    CATEGORIAS.forEach(function (c) { soma += last30Series.segCatByPeriodCat[d + '|' + c.status] || 0; });
+    return round2_(soma / 86400 / dias);
+  });
+  var last30AvgFrota = last30Series.labels.map(function (d) {
+    var dias = nDiasByLast30[d] || 1;
+    return round2_((last30Series.totalSegByPeriod[d] || 0) / 86400 / dias);
+  });
+
+  var baselineAvgCarros = round2_(byCategory.reduce(function (s, c) { return s + c.segCat; }, 0) / 86400 / totalDiasPeriodo);
+  var baselineAvgFrota = round2_(totalSegPeriodo / 86400 / totalDiasPeriodo);
 
   return {
     start_date: startDate,
     end_date: endDate,
     city: city || null,
-    baseline: { bqDireto: bqDiretoPeriodo, totalSegPeriodo: totalSegPeriodo },
-    weekly: { labels: weeks, bqDireto: weeklyBqDireto, categorias: weeklyCategorias },
-    last30d: { labels: last30Series.labels, bqDireto: last30Series.bqDireto, start: last30.start, end: last30.end, categorias: last30Categorias },
+    baseline: { bqDireto: bqDiretoPeriodo, totalSegPeriodo: totalSegPeriodo, avgCarros: baselineAvgCarros, avgFrota: baselineAvgFrota },
+    weekly: { labels: weeks, bqDireto: weeklyBqDireto, bqDiretoAvgCarros: weeklyAvgCarros, avgFrota: weeklyAvgFrota, categorias: weeklyCategorias },
+    last30d: { labels: last30Series.labels, bqDireto: last30Series.bqDireto, bqDiretoAvgCarros: last30AvgCarros, avgFrota: last30AvgFrota, start: last30.start, end: last30.end, categorias: last30Categorias },
     byCategory: byCategory,
     byResponsavel: byResponsavel,
     substatusByCategory: substatusByCategory,

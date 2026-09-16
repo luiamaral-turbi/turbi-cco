@@ -380,6 +380,7 @@
     <div class="card filter-row" style="margin-bottom:20px">
       <label>Período — De: <select id="indisp-overview-start"></select></label>
       <label>Até: <select id="indisp-overview-end"></select></label>
+      <button id="indisp-ov-unit-toggle" type="button">Ver: % de indisponibilidade</button>
     </div>
 
     <div class="hero-row" id="indisp-overview-heroes">
@@ -394,7 +395,7 @@
     <div class="card"><div class="tbl-wrap"><div id="c-indispOvWeekly"></div></div><div class="legend-row"><span class="legend-item"><span class="legend-sw" style="background:var(--good)"></span>Dentro da meta</span><span class="legend-item"><span class="legend-sw" style="background:var(--critical)"></span>Acima da meta</span><span class="legend-item"><span class="legend-line"></span>Meta</span></div></div>
     <div class="tbl-wrap card freeze-wrap" style="margin-top:14px"><table class="dtbl freeze-cat"><thead id="tbl-indisp-ov-weekly-head"></thead><tbody id="tbl-indisp-ov-weekly"></tbody></table></div>
 
-    <div class="subhead">Últimos 30 dias corridos <span class="sub-note">janela fixa hoje-30..ontem, independente do filtro de período acima — pra ver tendência recente</span></div>
+    <div class="subhead">Últimos 30 dias corridos <span class="sub-note">janela fixa hoje-30..hoje, independente do filtro de período acima — pra ver tendência recente (o dia de hoje vem parcial)</span></div>
     <div class="card"><div class="tbl-wrap"><div id="c-indispOvLast30"></div></div><div class="legend-row"><span class="legend-item"><span class="legend-sw" style="background:var(--good)"></span>Dentro da meta</span><span class="legend-item"><span class="legend-sw" style="background:var(--critical)"></span>Acima da meta</span><span class="legend-item"><span class="legend-line"></span>Meta</span></div></div>
     <div class="tbl-wrap card freeze-wrap" style="margin-top:14px"><table class="dtbl freeze-cat"><thead id="tbl-indisp-ov-last30-head"></thead><tbody id="tbl-indisp-ov-last30"></tbody></table></div>
 
@@ -474,7 +475,7 @@
       <div class="card"><div class="tbl-wrap"><div id="c-apvOvWeekly"></div></div><div class="legend-row" id="legend-apv-ov"></div><div class="legend-row"><span class="legend-item"><span class="legend-line"></span>Meta APV Ops (ref.)</span></div></div>
 
       <h3 class="ov-title" style="margin-top:20px">Últimos 30 dias corridos</h3>
-      <p class="sub-note">Janela fixa hoje-30..ontem, independente do filtro de período acima — pra ver tendência recente.</p>
+      <p class="sub-note">Janela fixa hoje-30..hoje, independente do filtro de período acima — pra ver tendência recente (o dia de hoje vem parcial).</p>
       <div class="card"><div class="tbl-wrap"><div id="c-apvOvLast30"></div></div></div>
 
       <div class="campinas-block">
@@ -825,19 +826,44 @@ function findRow(rows, label, col, start, mustContain){
 // ── COGS — réplica de queries/cogs.py ──
 const COGS_SHEET_NAME = 'Acompanhamento COGS 2026';
 const COGS_VHC_MARKER = 'COGS./VHC';
-const COGS_MONTH_STARTS = [1, 5, 9, 17, 21, 25, 33]; // jan..jul
-const COGS_MESES = ['2026-01','2026-02','2026-03','2026-04','2026-05','2026-06','2026-07'];
-const COGS_ANNUAL_START = 65;
+const COGS_MES_ABREV = ['jan','fev','mar','abr','mai','jun','jul','ago','set','out','nov','dez'];
 const COGS_LINHAS_LUI = ['Cleaning','Damage','Vehicle Maintenance','Vehicle Supplies','Desmobilization','Logistical','Other COGS'];
 const COGS_LINHAS_FORA_ESCOPO = ['Points of Location','Monitoring Services'];
 
-function cogsLinha(rows, vhcStart, nome){
+// Descobre sozinho, a cada carregamento, até qual mês de 2026 já tem dado preenchido na planilha —
+// nunca mais precisa editar código quando um mês novo fecha (achado real, 2026-09-16: agosto tinha
+// dado na planilha mas o painel continuava fixo em julho porque os índices eram hardcoded).
+// Funciona porque o rótulo do mês no cabeçalho (ex. "jan.-26") fica exatamente em cima da própria
+// coluna de Budget daquele mês (Real é sempre a coluna seguinte) — confirmado ao vivo. Procura em
+// ordem jan..dez; para no primeiro mês cujo rótulo não existe no cabeçalho OU cuja linha "COGS OPS"
+// ainda está com a célula de Real em branco (mês já tem coluna reservada mas ainda não fechou) —
+// evita mostrar um mês com R$ 0 antes da hora.
+function cogsDetectLayout_(rows){
+  const header = rows[0] || [];
+  const totalRow = findRow(rows, 'COGS OPS', 0, 0) || [];
+  const monthStarts = [];
+  const meses = [];
+  for (let m = 0; m < 12; m++) {
+    const label = `${COGS_MES_ABREV[m]}.-26`;
+    const idx = header.findIndex(cell => (cell || '').trim().toLowerCase() === label);
+    if (idx === -1) break;
+    const realCell = totalRow.length > idx + 1 ? totalRow[idx + 1].trim() : '';
+    if (!realCell) break;
+    monthStarts.push(idx);
+    meses.push(`2026-${String(m + 1).padStart(2, '0')}`);
+  }
+  const annualIdx = header.findIndex(cell => (cell || '').trim() === '2026');
+  return { monthStarts, meses, annualStart: annualIdx === -1 ? null : annualIdx };
+}
+
+function cogsLinha(rows, vhcStart, nome, layout){
   const row = findRow(rows, nome, 0, vhcStart);
   if (!row) throw new Error('Linha ' + nome + ' não encontrada na seção COGS./VHC');
-  const budget = COGS_MONTH_STARTS.map(s => row.length > s ? toNumber(row[s]) : 0.0);
-  const real = COGS_MONTH_STARTS.map(s => row.length > s + 1 ? toNumber(row[s + 1]) : 0.0);
-  const annualB = row.length > COGS_ANNUAL_START ? toNumber(row[COGS_ANNUAL_START]) : 0.0;
-  const annualR = row.length > COGS_ANNUAL_START + 1 ? toNumber(row[COGS_ANNUAL_START + 1]) : 0.0;
+  const budget = layout.monthStarts.map(s => row.length > s ? toNumber(row[s]) : 0.0);
+  const real = layout.monthStarts.map(s => row.length > s + 1 ? toNumber(row[s + 1]) : 0.0);
+  const a = layout.annualStart;
+  const annualB = a != null && row.length > a ? toNumber(row[a]) : 0.0;
+  const annualR = a != null && row.length > a + 1 ? toNumber(row[a + 1]) : 0.0;
   return { name: nome, budget, real, annualB, annualR };
 }
 
@@ -845,16 +871,18 @@ async function getCogsData(){
   const rows = await fetchSheetRows(COGS_SHEET_NAME);
   const vhcStart = rows.findIndex(r => r.length > 0 && r[0].trim() === COGS_VHC_MARKER);
   if (vhcStart === -1) throw new Error('Marcador "COGS./VHC" não encontrado na planilha de COGS');
+  const layout = cogsDetectLayout_(rows);
+  if (!layout.meses.length) throw new Error('Nenhum mês de 2026 com dado preenchido encontrado no cabeçalho da planilha de COGS');
 
-  const linhas = COGS_LINHAS_LUI.map(nome => cogsLinha(rows, vhcStart, nome));
-  const foraEscopo = COGS_LINHAS_FORA_ESCOPO.map(nome => cogsLinha(rows, vhcStart, nome));
-  const total9Linhas = cogsLinha(rows, vhcStart, 'COGS OPS');
+  const linhas = COGS_LINHAS_LUI.map(nome => cogsLinha(rows, vhcStart, nome, layout));
+  const foraEscopo = COGS_LINHAS_FORA_ESCOPO.map(nome => cogsLinha(rows, vhcStart, nome, layout));
+  const total9Linhas = cogsLinha(rows, vhcStart, 'COGS OPS', layout);
 
-  const totBudget = COGS_MESES.map((_, i) => linhas.reduce((s, l) => s + l.budget[i], 0));
-  const totReal = COGS_MESES.map((_, i) => linhas.reduce((s, l) => s + l.real[i], 0));
+  const totBudget = layout.meses.map((_, i) => linhas.reduce((s, l) => s + l.budget[i], 0));
+  const totReal = layout.meses.map((_, i) => linhas.reduce((s, l) => s + l.real[i], 0));
 
   return {
-    meses: COGS_MESES,
+    meses: layout.meses,
     linhas,
     total_7_linhas: {
       budget: totBudget, real: totReal,
@@ -1378,6 +1406,8 @@ async function atualizarDadosRmr(){
 /* ============================================================================ */
 
 let indispOverviewMonthsPopulated = false;
+let indispOvUnit = 'pct'; // 'pct' ou 'carros' — toggle da Indisponibilidade → Visão Geral
+let indispOvCache = null; // { nacional, campinas, metaIndisp, metaMaps, mensalNacional, mensalCampinas }
 
 function populateIndispOverviewMonthSelects(){
   if (indispOverviewMonthsPopulated) return;
@@ -1404,22 +1434,77 @@ async function loadIndispOverview(){
     fetchWebApp('indisponibilidade'),
     fetchWebApp('indisponibilidade', 'Campinas'),
   ]);
-  renderIndispOverviewBlock(nacional, metas.indisponibilidade, {});
-  renderIndispOverviewBlock(campinas, metas.indisponibilidade, { suffix: '-cp' });
-
-  // Visão mensal — mesmo gráfico+tabela da RMR (renderIndispTable e a fórmula de
-  // labelsYtd/valuesYtd/metaYtd/colors de renderIndisponibilidade, sem modificar nenhuma das
-  // duas), só que exibidos também aqui pra não precisar trocar de aba pra ver
-  // últimos-30d + semanal + mensal.
-  const metaMaps = buildMetaMaps(metas);
-  renderIndispOverviewMonthly_('c-indispOvMonthly', 'tbl-indisp-ov-monthly-head', 'tbl-indisp-ov-monthly', mensalNacional, metaMaps.indisp, metaMaps.indispAnual);
-  renderIndispOverviewMonthly_('c-indispOvMonthly-cp', 'tbl-indisp-ov-monthly-head-cp', 'tbl-indisp-ov-monthly-cp', mensalCampinas, metaMaps.indisp, metaMaps.indispAnual);
+  indispOvCache = { nacional, campinas, metaIndisp: metas.indisponibilidade, metaMaps: buildMetaMaps(metas), mensalNacional, mensalCampinas };
+  renderIndispOverviewAll_();
 }
 
-function renderIndispOverviewMonthly_(elIdChart, elIdHead, elIdBody, data, metaMap, metaAnual){
+// Redesenha tudo a partir do cache (sem refetch) — reaproveitado pelo toggle %/carros, que só
+// muda `indispOvUnit` e chama isso de novo (mesmo padrão de redraw client-side já usado nesta
+// página pra outras interações).
+function renderIndispOverviewAll_(){
+  if (!indispOvCache) return;
+  const { nacional, campinas, metaIndisp, metaMaps, mensalNacional, mensalCampinas } = indispOvCache;
+  renderIndispOverviewBlock(nacional, metaIndisp, {});
+  renderIndispOverviewBlock(campinas, metaIndisp, { suffix: '-cp' });
+
+  // Visão mensal — mesmo gráfico+tabela da RMR em modo %, com uma variante própria em modo
+  // carros (ver renderIndispOverviewMonthly_) — exibidos aqui também pra não precisar trocar de
+  // aba pra ver últimos-30d + semanal + mensal.
+  renderIndispOverviewMonthly_('c-indispOvMonthly', 'tbl-indisp-ov-monthly-head', 'tbl-indisp-ov-monthly', mensalNacional, metaMaps.indisp, metaMaps.indispAnual, indispOvUnit);
+  renderIndispOverviewMonthly_('c-indispOvMonthly-cp', 'tbl-indisp-ov-monthly-head-cp', 'tbl-indisp-ov-monthly-cp', mensalCampinas, metaMaps.indisp, metaMaps.indispAnual, indispOvUnit);
+}
+
+function toggleIndispOvUnit(){
+  indispOvUnit = indispOvUnit === 'pct' ? 'carros' : 'pct';
+  document.getElementById('indisp-ov-unit-toggle').textContent =
+    indispOvUnit === 'pct' ? 'Ver: % de indisponibilidade' : 'Ver: qtd. média de carros indisponíveis';
+  renderIndispOverviewAll_();
+}
+
+// Converte meta (%) em quantidade de carros usando o tamanho médio da frota ativa do MESMO
+// bucket (semana/dia/mês) — meta_carros = meta_pct/100 * avgFrota. Carro não tem decimal.
+function metaCarros_(metaPct, avgFrota){
+  return (metaPct == null || avgFrota == null) ? null : Math.round(metaPct / 100 * avgFrota);
+}
+function fmtCarros_(v){ return String(Math.round(v)); }
+
+function renderIndispOverviewMonthly_(elIdChart, elIdHead, elIdBody, data, metaMap, metaAnual, unit){
   const labels = data.meses.map(mesLabel);
-  const meta = data.meses.map(ym => metaMap[ym] ?? null);
   const labelsYtd = labels.concat(['YTD']);
+
+  if (unit === 'carros') {
+    // Modo "qtd. de carros": meta convertida por mês usando a frota média DAQUELE mês
+    // (data.avg_frota) — mesma comparação verde/vermelho do modo %, só que na unidade certa.
+    // Tabela própria (não reaproveita renderIndispTable, que é % e é compartilhada com a RMR —
+    // RMR nunca entra em modo carros).
+    const metaCarrosPorMes = data.meses.map((ym,i) => metaCarros_(metaMap[ym] ?? null, data.avg_frota[i]));
+    const metaCarrosYtd = metaCarros_(metaAnual ?? null, data.ytd_avg_frota);
+    const valuesYtd = data.bq_direto_avg_carros.concat([data.ytd_bq_direto_avg_carros]);
+    const metaYtd = metaCarrosPorMes.concat([metaCarrosYtd]);
+    const colorsYtd = valuesYtd.map((v,i)=> (metaYtd[i]==null || v<=metaYtd[i]) ? 'var(--good)' : 'var(--critical)');
+    lineBarChart(elIdChart, {
+      labels: labelsYtd, values: valuesYtd, meta: metaYtd, colors: colorsYtd,
+      name1: 'Qtd. média de carros', unit: '', decimals: 0, height: 190,
+    });
+    const heatMax = Math.max(...data.categorias.flatMap(c => c.avgCarros.concat([c.ytdAvgCarros])), 0.01);
+    let body = data.categorias.map(c => {
+      const heatTd = (v, extra) => `<td class='num' style='background:${heatColor(v,0,heatMax)};color:${heatTextColor(v,0,heatMax)}${extra||''}' data-tip='${c.name}: ${fmtCarros_(v)}'>${fmtCarros_(v)}</td>`;
+      const cells = c.avgCarros.map(v=>heatTd(v)).join('');
+      const ytdCell = heatTd(c.ytdAvgCarros, ';font-weight:700');
+      return `<tr><td><span class='legend-sw' style='background:${c.color};display:inline-block;margin-right:6px'></span>${c.name}</td>${cells}${ytdCell}</tr>`;
+    }).join('');
+    const bqCells = data.bq_direto_avg_carros.map((v,i) => {
+      const m = metaCarrosPorMes[i];
+      const cls = (m==null || v<=m) ? 'cc-good' : 'cc-bad';
+      return `<td class='num cc-real ${cls}'>${fmtCarros_(v)}</td>`;
+    }).join('');
+    body += `<tr class='tot'><td>Cálculo BQ direto</td>${bqCells}<td class='num'>${fmtCarros_(data.ytd_bq_direto_avg_carros)}</td></tr>`;
+    document.getElementById(elIdHead).innerHTML = `<tr><th>Categoria</th>${labels.map(l=>`<th class="num">${l}</th>`).join('')}<th class='num'>YTD</th></tr>`;
+    document.getElementById(elIdBody).innerHTML = body;
+    return;
+  }
+
+  const meta = data.meses.map(ym => metaMap[ym] ?? null);
   const valuesYtd = data.bq_direto.concat([data.ytd_bq_direto]);
   const metaYtd = meta.concat([metaAnual ?? null]);
   const colors = valuesYtd.map((v,i)=> (metaYtd[i]==null || v<=metaYtd[i]) ? 'var(--good)' : 'var(--critical)');
@@ -1441,26 +1526,35 @@ function indispDimRowsHtml_(rows, labelKey){
 // renderIndispTable, mas não a reaproveita: aqui a chave de cada coluna é semana/dia — não
 // mês — então a meta de cada coluna vem de metaParaData_() em vez de um metaMap plano, e não
 // existe uma coluna "YTD" natural numa janela semanal/rolante de 30 dias).
-function renderIndispOverviewSeriesTable_(elIdHead, elIdBody, periodKeys, labels, categorias, bqDireto, metaMensal){
+function renderIndispOverviewSeriesTable_(elIdHead, elIdBody, periodKeys, labels, seriesObj, metaMensal, unit){
+  const categorias = seriesObj.categorias;
+  const valKey = unit === 'carros' ? 'avgCarros' : 'values';
+  const bqDireto = unit === 'carros' ? seriesObj.bqDiretoAvgCarros : seriesObj.bqDireto;
+  const fmt = v => unit === 'carros' ? fmtCarros_(v) : v.toFixed(2) + '%';
+
   const head = `<tr><th>Categoria</th>${labels.map(l=>`<th class="num">${l}</th>`).join('')}</tr>`;
   document.getElementById(elIdHead).innerHTML = head;
 
-  // Escala de cor fixa pra tabela toda (0% a maior valor de qualquer categoria em qualquer
-  // período) — mesmo princípio da tabela mensal: compara o peso real entre categorias.
-  const allVals = categorias.flatMap(c => c.values);
+  // Escala de cor fixa pra tabela toda (0 ao maior valor de qualquer categoria em qualquer
+  // período, na unidade ativa) — mesmo princípio da tabela mensal: compara o peso real entre
+  // categorias.
+  const allVals = categorias.flatMap(c => c[valKey]);
   const heatMax = Math.max(...allVals, 0.01);
 
   let body = categorias.map(c => {
-    const cells = c.values.map(v =>
-      `<td class='num' style='background:${heatColor(v,0,heatMax)};color:${heatTextColor(v,0,heatMax)}' data-tip='${c.name}: ${v.toFixed(2)}%'>${v.toFixed(2)}%</td>`
+    const cells = c[valKey].map(v =>
+      `<td class='num' style='background:${heatColor(v,0,heatMax)};color:${heatTextColor(v,0,heatMax)}' data-tip='${c.name}: ${fmt(v)}'>${fmt(v)}</td>`
     ).join('');
     return `<tr><td><span class='legend-sw' style='background:${c.color};display:inline-block;margin-right:6px'></span>${c.name}</td>${cells}</tr>`;
   }).join('');
 
+  // Meta é definida em % — em modo "carros" convertida via metaCarros_() usando a frota média
+  // DAQUELE período (seriesObj.avgFrota), pra continuar comparando na mesma unidade mostrada.
   const bqCells = bqDireto.map((v,i) => {
-    const m = metaParaData_(periodKeys[i], metaMensal);
+    const mPct = metaParaData_(periodKeys[i], metaMensal);
+    const m = unit === 'carros' ? metaCarros_(mPct, seriesObj.avgFrota[i]) : mPct;
     const cls = (m==null || v<=m) ? 'cc-good' : 'cc-bad';
-    return `<td class='num cc-real ${cls}'>${v.toFixed(2)}%</td>`;
+    return `<td class='num cc-real ${cls}'>${fmt(v)}</td>`;
   }).join('');
   body += `<tr class='tot'><td>Cálculo BQ direto</td>${bqCells}</tr>`;
 
@@ -1470,43 +1564,67 @@ function renderIndispOverviewSeriesTable_(elIdHead, elIdBody, periodKeys, labels
 function renderIndispOverviewBlock(data, metaIndisp, opts){
   opts = opts || {};
   const suf = opts.suffix || '';
+  const unit = indispOvUnit;
   const b = data.baseline;
   const metaMensal = metaIndisp.mensal;
   const metaAnual = metaIndisp.anual;
-  const piorSemanaIdx = data.weekly.bqDireto.length
-    ? data.weekly.bqDireto.reduce((best,v,i)=> v>data.weekly.bqDireto[best]?i:best, 0)
+  const weeklySerie = unit === 'carros' ? data.weekly.bqDiretoAvgCarros : data.weekly.bqDireto;
+  const piorSemanaIdx = weeklySerie.length
+    ? weeklySerie.reduce((best,v,i)=> v>weeklySerie[best]?i:best, 0)
     : -1;
-  const ultimaSemanaIdx = data.weekly.bqDireto.length - 1;
+  const ultimaSemanaIdx = weeklySerie.length - 1;
   const metaUltimaSemana = ultimaSemanaIdx>=0 ? metaParaData_(data.weekly.labels[ultimaSemanaIdx], metaMensal) : null;
+  const metaUltimaSemanaCarros = ultimaSemanaIdx>=0 ? metaCarros_(metaUltimaSemana, data.weekly.avgFrota[ultimaSemanaIdx]) : null;
+  const metaAnualCarros = metaCarros_(metaAnual, b.avgFrota);
 
-  document.getElementById('indisp-overview-heroes'+suf).innerHTML = `
-    <div class='hero-card'><div class='hero-eye'>Semana mais recente (${ultimaSemanaIdx>=0?weekLabel_(data.weekly.labels[ultimaSemanaIdx]):'—'})</div><div class='hero-num'>${ultimaSemanaIdx>=0?data.weekly.bqDireto[ultimaSemanaIdx].toFixed(2)+'%':'—'}</div><div class='hero-sub'>${metaUltimaSemana!=null?`Meta ${metaUltimaSemana.toFixed(2)}% · ${data.weekly.bqDireto[ultimaSemanaIdx]<=metaUltimaSemana?'dentro da meta':'acima da meta'}`:'Meta não disponível'}</div></div>
+  document.getElementById('indisp-overview-heroes'+suf).innerHTML = unit === 'carros' ? `
+    <div class='hero-card'><div class='hero-eye'>Semana mais recente (${ultimaSemanaIdx>=0?weekLabel_(data.weekly.labels[ultimaSemanaIdx]):'—'})</div><div class='hero-num'>${ultimaSemanaIdx>=0?fmtCarros_(weeklySerie[ultimaSemanaIdx]):'—'}</div><div class='hero-sub'>${metaUltimaSemanaCarros!=null?`Meta ${metaUltimaSemanaCarros} carros · ${weeklySerie[ultimaSemanaIdx]<=metaUltimaSemanaCarros?'dentro da meta':'acima da meta'}`:'Meta não disponível'}</div></div>
+    <div class='hero-card'><div class='hero-eye'>Qtd. média de carros indisponíveis — período selecionado</div><div class='hero-num'>${fmtCarros_(b.avgCarros)}</div><div class='hero-sub'>${metaAnualCarros!=null?`Meta 2026 (anual): ${metaAnualCarros} carros`:'Meta anual não disponível'}</div></div>
+    <div class='hero-card'><div class='hero-eye'>Pior semana do período</div><div class='hero-num'>${piorSemanaIdx>=0?fmtCarros_(weeklySerie[piorSemanaIdx]):'—'}</div><div class='hero-sub'>${piorSemanaIdx>=0?weekLabel_(data.weekly.labels[piorSemanaIdx]):''}</div></div>
+  ` : `
+    <div class='hero-card'><div class='hero-eye'>Semana mais recente (${ultimaSemanaIdx>=0?weekLabel_(data.weekly.labels[ultimaSemanaIdx]):'—'})</div><div class='hero-num'>${ultimaSemanaIdx>=0?weeklySerie[ultimaSemanaIdx].toFixed(2)+'%':'—'}</div><div class='hero-sub'>${metaUltimaSemana!=null?`Meta ${metaUltimaSemana.toFixed(2)}% · ${weeklySerie[ultimaSemanaIdx]<=metaUltimaSemana?'dentro da meta':'acima da meta'}`:'Meta não disponível'}</div></div>
     <div class='hero-card'><div class='hero-eye'>Cálculo BQ direto — período selecionado</div><div class='hero-num'>${b.bqDireto.toFixed(2)}%</div><div class='hero-sub'>${metaAnual!=null?`Meta 2026 (anual): ${metaAnual.toFixed(2)}%`:'Meta anual não disponível'}</div></div>
-    <div class='hero-card'><div class='hero-eye'>Pior semana do período</div><div class='hero-num'>${piorSemanaIdx>=0?data.weekly.bqDireto[piorSemanaIdx].toFixed(2)+'%':'—'}</div><div class='hero-sub'>${piorSemanaIdx>=0?weekLabel_(data.weekly.labels[piorSemanaIdx]):''}</div></div>
+    <div class='hero-card'><div class='hero-eye'>Pior semana do período</div><div class='hero-num'>${piorSemanaIdx>=0?weeklySerie[piorSemanaIdx].toFixed(2)+'%':'—'}</div><div class='hero-sub'>${piorSemanaIdx>=0?weekLabel_(data.weekly.labels[piorSemanaIdx]):''}</div></div>
   `;
 
-  const weeklyMeta = data.weekly.labels.map(w => metaParaData_(w, metaMensal));
-  const weeklyColors = data.weekly.bqDireto.map((v,i)=> (weeklyMeta[i]==null || v<=weeklyMeta[i]) ? 'var(--good)' : 'var(--critical)');
-  lineBarChart('c-indispOvWeekly'+suf, {
-    labels: data.weekly.labels.map(weekLabel_), values: data.weekly.bqDireto, meta: weeklyMeta, colors: weeklyColors,
-    name1: 'Cálculo BQ direto', decimals: 2, height: 190,
-  });
+  if (unit === 'carros') {
+    const weeklyMetaCarros = data.weekly.labels.map((w,i) => metaCarros_(metaParaData_(w, metaMensal), data.weekly.avgFrota[i]));
+    const weeklyColorsCarros = data.weekly.bqDiretoAvgCarros.map((v,i)=> (weeklyMetaCarros[i]==null || v<=weeklyMetaCarros[i]) ? 'var(--good)' : 'var(--critical)');
+    lineBarChart('c-indispOvWeekly'+suf, {
+      labels: data.weekly.labels.map(weekLabel_), values: data.weekly.bqDiretoAvgCarros, meta: weeklyMetaCarros, colors: weeklyColorsCarros,
+      name1: 'Qtd. média de carros', unit: '', decimals: 0, height: 190,
+    });
+  } else {
+    const weeklyMeta = data.weekly.labels.map(w => metaParaData_(w, metaMensal));
+    const weeklyColors = data.weekly.bqDireto.map((v,i)=> (weeklyMeta[i]==null || v<=weeklyMeta[i]) ? 'var(--good)' : 'var(--critical)');
+    lineBarChart('c-indispOvWeekly'+suf, {
+      labels: data.weekly.labels.map(weekLabel_), values: data.weekly.bqDireto, meta: weeklyMeta, colors: weeklyColors,
+      name1: 'Cálculo BQ direto', decimals: 2, height: 190,
+    });
+  }
   renderIndispOverviewSeriesTable_(
     'tbl-indisp-ov-weekly-head'+suf, 'tbl-indisp-ov-weekly'+suf,
-    data.weekly.labels, data.weekly.labels.map(weekLabel_), data.weekly.categorias, data.weekly.bqDireto,
-    metaMensal
+    data.weekly.labels, data.weekly.labels.map(weekLabel_), data.weekly, metaMensal, unit
   );
 
-  const last30Meta = data.last30d.labels.map(d => metaParaData_(d, metaMensal));
-  const last30Colors = data.last30d.bqDireto.map((v,i)=> (last30Meta[i]==null || v<=last30Meta[i]) ? 'var(--good)' : 'var(--critical)');
-  lineBarChart('c-indispOvLast30'+suf, {
-    labels: data.last30d.labels.map(dayLabelShort_), values: data.last30d.bqDireto, meta: last30Meta, colors: last30Colors,
-    name1: 'Cálculo BQ direto', decimals: 2, height: 190,
-  });
+  if (unit === 'carros') {
+    const last30MetaCarros = data.last30d.labels.map((d,i) => metaCarros_(metaParaData_(d, metaMensal), data.last30d.avgFrota[i]));
+    const last30ColorsCarros = data.last30d.bqDiretoAvgCarros.map((v,i)=> (last30MetaCarros[i]==null || v<=last30MetaCarros[i]) ? 'var(--good)' : 'var(--critical)');
+    lineBarChart('c-indispOvLast30'+suf, {
+      labels: data.last30d.labels.map(dayLabelShort_), values: data.last30d.bqDiretoAvgCarros, meta: last30MetaCarros, colors: last30ColorsCarros,
+      name1: 'Qtd. média de carros', unit: '', decimals: 0, height: 190,
+    });
+  } else {
+    const last30Meta = data.last30d.labels.map(d => metaParaData_(d, metaMensal));
+    const last30Colors = data.last30d.bqDireto.map((v,i)=> (last30Meta[i]==null || v<=last30Meta[i]) ? 'var(--good)' : 'var(--critical)');
+    lineBarChart('c-indispOvLast30'+suf, {
+      labels: data.last30d.labels.map(dayLabelShort_), values: data.last30d.bqDireto, meta: last30Meta, colors: last30Colors,
+      name1: 'Cálculo BQ direto', decimals: 2, height: 190,
+    });
+  }
   renderIndispOverviewSeriesTable_(
     'tbl-indisp-ov-last30-head'+suf, 'tbl-indisp-ov-last30'+suf,
-    data.last30d.labels, data.last30d.labels.map(dayLabelShort_), data.last30d.categorias, data.last30d.bqDireto,
-    metaMensal
+    data.last30d.labels, data.last30d.labels.map(dayLabelShort_), data.last30d, metaMensal, unit
   );
 
   document.getElementById('tbl-indisp-overview-model'+suf).innerHTML = indispDimRowsHtml_(data.byModel, 'label');
@@ -1556,7 +1674,7 @@ function apvIds(component){
 }
 
 function ymRange(startYm, endYear){
-  // Gera ['2026-01', ..., mês atual] — mesmo padrão hardcoded já usado em COGS_MESES.
+  // Gera ['2026-01', ..., mês atual] — usado pelos seletores de período (Metas/Visão Geral).
   const months = [];
   const [sy, sm] = startYm.split('-').map(Number);
   const now = new Date();
@@ -1998,6 +2116,7 @@ document.getElementById('sidebar-backdrop').addEventListener('click', closeMobil
   ['refresh-btn', 'click', atualizarPaginaAtiva],
   ['indisp-overview-start', 'change', loadIndispOverview],
   ['indisp-overview-end', 'change', loadIndispOverview],
+  ['indisp-ov-unit-toggle', 'click', toggleIndispOvUnit],
   ['apv-overview-start', 'change', loadApvOverview],
   ['apv-overview-end', 'change', loadApvOverview],
   ['apv-damage-start', 'change', () => loadApvComponent('damage')],

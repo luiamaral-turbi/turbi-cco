@@ -4,6 +4,38 @@ Formato: data + o que mudou e por quê. Foco em decisões de arquitetura e fórm
 substituto do histórico de commits do Git, é um resumo pensado pra quem for dar manutenção sem
 querer ler o diff inteiro.
 
+## 2026-09-16 — COGS detecta mês novo sozinho (nunca mais precisa de ajuste manual)
+
+- Achado real: agosto/2026 já tinha dado preenchido na planilha "Acompanhamento COGS 2026", mas o
+  painel continuava mostrando só até julho — causa: `COGS_MONTH_STARTS`/`COGS_MESES` em
+  `index.html` eram listas **fixas** de índice de coluna, precisavam de edição manual toda vez que
+  um mês fechava. Corrigido rapidamente estendendo os arrays pra incluir agosto (índice 37,
+  confirmado ao vivo na planilha) — mas isso só resolvia até agosto, o problema voltaria em setembro.
+- **Corrigido de vez**: nova função `cogsDetectLayout_(rows)` — a cada carregamento, procura o
+  rótulo de cada mês (`"jan.-26"`, `"fev.-26"`, ...) na linha de cabeçalho da planilha (o rótulo
+  fica exatamente em cima da própria coluna de Budget daquele mês; Real é a coluna seguinte) e para
+  no primeiro mês cujo rótulo não existe OU cuja linha "COGS OPS" ainda está com a célula de Real em
+  branco (coluna reservada mas mês ainda não fechado — evita mostrar R$ 0 antes da hora). A coluna
+  anual ("2026") também é achada por texto, não por índice fixo. Validado contra a planilha real:
+  detecta exatamente os mesmos 8 meses/índices que tinham sido confirmados manualmente.
+- `COGS_MONTH_STARTS`/`COGS_MESES`/`COGS_ANNUAL_START` (constantes fixas) deixaram de existir —
+  `getCogsData()`/`cogsLinha()` agora recebem o layout detectado em cada chamada.
+
+## 2026-09-15 — Inclui "hoje" nas visões diárias; toggle %/qtd. de carros na Indisponibilidade
+
+- **"Últimos 30 dias corridos"** (Indisponibilidade → Visão Geral E APV → Visão Geral, mesma função
+  `last30dRange_()` compartilhada) agora vai até **hoje** (era "hoje-30 até ontem") — pedido do Lui.
+  `defaultRange_()` (mensal/RMR) não mudou.
+- **Indisponibilidade → Visão Geral ganhou toggle %/quantidade média de carros indisponíveis** —
+  botão no topo alterna os 3 blocos de série temporal (mensal/semanal/últimos 30 dias) e os 3 hero
+  cards. `avgCarros = segundos_categoria / 86400 / n_dias_do_bucket` (`n_dias` via `COUNT(DISTINCT
+  dt_result)`, não calendário). Meta (%) convertida pra carros usando a frota média ATIVA do MESMO
+  bucket (`avgFrota = total_seg / 86400 / n_dias`): `meta_carros = meta_% / 100 * avgFrota`. Carro
+  sempre em número inteiro (`Math.round`).
+- Bug real corrigido antes de implantar: a CTE `filtered` de `getIndisponibilidade()` (mensal) só
+  selecionava `FORMAT_DATE(...) AS ym`, não a coluna `dt_result` bruta — `COUNT(DISTINCT dt_result)`
+  falhava com `Unrecognized name: dt_result`. Corrigido adicionando `dt_result` no SELECT da CTE.
+
 ## 2026-09-03 — GitHub Pages desativado — só o Apps Script logado hospeda o painel agora
 
 - Depois de várias rodadas de teste manual confirmando a hospedagem logada (2026-08-27 a
