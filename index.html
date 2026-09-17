@@ -462,6 +462,7 @@
     <div class="card filter-row" style="margin-bottom:20px">
       <label>Período — De: <select id="apv-overview-start"></select></label>
       <label>Até: <select id="apv-overview-end"></select></label>
+      <button id="apv-ov-unit-toggle" type="button">Ver: % de reservas</button>
     </div>
 
     <div class="ov-finding-hero" id="apv-ov-hero"><div class="lbl">Carregando…</div><div class="headline">—</div></div>
@@ -470,19 +471,34 @@
 
     <div class="ov-section">
       <div class="ov-section-eyebrow">Panorama</div>
-      <h3 class="ov-title">Evolução semanal</h3>
+      <h3 class="ov-title">Visão mensal</h3>
+      <p class="sub-note">Igual à tabela da RMR · 1º de janeiro até ontem.</p>
+      <div class="card"><div class="tbl-wrap"><div id="c-apvOvMonthly"></div></div><div class="legend-row" id="legend-apv-ov-monthly"></div><div class="legend-row"><span class="legend-item"><span class="legend-line"></span>Meta APV Ops (ref.)</span></div></div>
+      <div class="tbl-wrap card freeze-wrap" style="margin-top:14px"><table class="dtbl freeze-cat cogswide"><thead id="tbl-apv-ov-monthly-head"></thead><tbody id="tbl-apv-ov-monthly"></tbody></table></div>
+
+      <h3 class="ov-title" style="margin-top:20px">Evolução semanal</h3>
       <p class="ov-finding-line" id="apv-ov-trend-finding"></p>
       <div class="card"><div class="tbl-wrap"><div id="c-apvOvWeekly"></div></div><div class="legend-row" id="legend-apv-ov"></div><div class="legend-row"><span class="legend-item"><span class="legend-line"></span>Meta APV Ops (ref.)</span></div></div>
+      <div class="tbl-wrap card freeze-wrap" style="margin-top:14px"><table class="dtbl freeze-cat cogswide"><thead id="tbl-apv-ov-weekly-head"></thead><tbody id="tbl-apv-ov-weekly"></tbody></table></div>
 
       <h3 class="ov-title" style="margin-top:20px">Últimos 30 dias corridos</h3>
       <p class="sub-note">Janela fixa hoje-30..hoje, independente do filtro de período acima — pra ver tendência recente (o dia de hoje vem parcial).</p>
       <div class="card"><div class="tbl-wrap"><div id="c-apvOvLast30"></div></div></div>
+      <div class="tbl-wrap card freeze-wrap" style="margin-top:14px"><table class="dtbl freeze-cat cogswide"><thead id="tbl-apv-ov-last30-head"></thead><tbody id="tbl-apv-ov-last30"></tbody></table></div>
 
       <div class="campinas-block">
         <div class="subhead">APV — Campinas <span class="campinas-tag">recorte geográfico</span> <span class="sub-note">mesma fórmula, filtrada por podCity = Campinas (join por podid)</span></div>
+
+        <div class="subhead">Visão mensal — Campinas</div>
+        <div class="card"><div class="tbl-wrap"><div id="c-apvOvMonthly-cp"></div></div></div>
+        <div class="tbl-wrap card freeze-wrap" style="margin-top:14px"><table class="dtbl freeze-cat cogswide"><thead id="tbl-apv-ov-monthly-head-cp"></thead><tbody id="tbl-apv-ov-monthly-cp"></tbody></table></div>
+
         <div class="card"><div class="tbl-wrap"><div id="c-apvOvWeekly-cp"></div></div><div class="legend-row" id="legend-apv-ov-cp"></div></div>
+        <div class="tbl-wrap card freeze-wrap" style="margin-top:14px"><table class="dtbl freeze-cat cogswide"><thead id="tbl-apv-ov-weekly-head-cp"></thead><tbody id="tbl-apv-ov-weekly-cp"></tbody></table></div>
+
         <div class="subhead">Últimos 30 dias corridos — Campinas</div>
         <div class="card"><div class="tbl-wrap"><div id="c-apvOvLast30-cp"></div></div></div>
+        <div class="tbl-wrap card freeze-wrap" style="margin-top:14px"><table class="dtbl freeze-cat cogswide"><thead id="tbl-apv-ov-last30-head-cp"></thead><tbody id="tbl-apv-ov-last30-cp"></tbody></table></div>
       </div>
     </div>
 
@@ -1333,6 +1349,44 @@ function pctCell(real, meta){
   const cls = real <= meta ? 'cc-good' : 'cc-bad';
   return `<td class='num'><div class='cc-real ${cls}'>${real.toFixed(2)}%</div><div class='cc-budget'>${meta.toFixed(2)}%</div></td>`;
 }
+function nCell_(real, meta){
+  if (meta == null) return `<td class='num'>${real}</td>`;
+  const cls = real <= meta ? 'cc-good' : 'cc-bad';
+  return `<td class='num'><div class='cc-real ${cls}'>${real}</div><div class='cc-budget'>${meta}</div></td>`;
+}
+
+// Tabela Wash/Damage/POD/Soma por mês+YTD — extraída de dentro de renderClaimApv (RMR) pra
+// ser reaproveitada pela "Visão mensal" da APV → Visão Geral também (mesmo padrão de
+// renderIndispTable, compartilhada entre RMR e Visão Geral). RMR sempre chama sem `unit`
+// (cai no modo '%', comportamento idêntico a antes — zero mudança na RMR); a Visão Geral
+// também pode chamar em modo 'qtd' (número de reservas em vez de %).
+function renderClaimApvTable_(elIdHead, elIdBody, data, metaMaps, unit){
+  const labels = data.meses.map(mesLabel);
+  const head = `<tr><th>Mês</th>${labels.map(l=>`<th class="num">${l}</th>`).join('')}<th class='num'>YTD</th></tr>`;
+  document.getElementById(elIdHead).innerHTML = head;
+
+  if (unit === 'qtd') {
+    const rowCells = (name, arr, ytd) => `<td>${name}</td>${arr.map(v=>`<td class='num'>${v}</td>`).join('')}<td class='num'>${ytd}</td>`;
+    document.getElementById(elIdBody).innerHTML =
+      `<tr>${rowCells('Wash', data.washN, data.ytdN.wash)}</tr>` +
+      `<tr>${rowCells('Damage', data.damageN, data.ytdN.damage)}</tr>` +
+      `<tr>${rowCells('POD', data.podN, data.ytdN.pod)}</tr>` +
+      `<tr class='tot'>${rowCells('Soma', data.somaN, data.ytdN.soma)}</tr>`;
+    return;
+  }
+
+  const metaOps = data.meses.map(ym => metaMaps.apvTotal[ym] ?? null);
+  const metaWashArr = data.meses.map(ym => metaMaps.apvWash[ym] ?? null);
+  const metaDamageArr = data.meses.map(ym => metaMaps.apvDamage[ym] ?? null);
+  const metaPodArr = data.meses.map(ym => metaMaps.apvPod[ym] ?? null);
+  const rowCells = (name, arr, metaArr, ytd, ytdMeta) =>
+    `<td>${name}</td>${arr.map((v,i)=>pctCell(v, metaArr[i])).join('')}${pctCell(ytd, ytdMeta)}`;
+  document.getElementById(elIdBody).innerHTML =
+    `<tr>${rowCells('Wash', data.wash, metaWashArr, data.ytd.wash, metaMaps.apvWashAnual)}</tr>` +
+    `<tr>${rowCells('Damage', data.damage, metaDamageArr, data.ytd.damage, metaMaps.apvDamageAnual)}</tr>` +
+    `<tr>${rowCells('POD', data.pod, metaPodArr, data.ytd.pod, metaMaps.apvPodAnual)}</tr>` +
+    `<tr class='tot'>${rowCells('Soma', data.soma, metaOps, data.ytd.soma, metaMaps.apvTotalAnual)}</tr>`;
+}
 
 function renderClaimApv(data, metaMaps, opts){
   opts = opts || {};
@@ -1345,9 +1399,6 @@ function renderClaimApv(data, metaMaps, opts){
   }
   const labels = data.meses.map(mesLabel);
   const metaOps = data.meses.map(ym => metaMaps.apvTotal[ym] ?? null);
-  const metaWashArr = data.meses.map(ym => metaMaps.apvWash[ym] ?? null);
-  const metaDamageArr = data.meses.map(ym => metaMaps.apvDamage[ym] ?? null);
-  const metaPodArr = data.meses.map(ym => metaMaps.apvPod[ym] ?? null);
 
   const ultimoSoma = data.soma[data.soma.length-1];
   const ultimoMeta = metaOps[metaOps.length-1];
@@ -1370,15 +1421,7 @@ function renderClaimApv(data, metaMaps, opts){
   });
   buildLegend('legend-apv'+suf, [{name:'Wash',color:'#171469'},{name:'Damage',color:'#3B36D8'},{name:'POD',color:'#B0ADEE'}]);
 
-  const head = `<tr><th>Mês</th>${labels.map(l=>`<th class="num">${l}</th>`).join('')}<th class='num'>YTD</th></tr>`;
-  document.getElementById('tbl-apv-head'+suf).innerHTML = head;
-  const rowCells = (name, arr, metaArr, ytd, ytdMeta) =>
-    `<td>${name}</td>${arr.map((v,i)=>pctCell(v, metaArr[i])).join('')}${pctCell(ytd, ytdMeta)}`;
-  document.getElementById('tbl-apv'+suf).innerHTML =
-    `<tr>${rowCells('Wash', data.wash, metaWashArr, data.ytd.wash, metaMaps.apvWashAnual)}</tr>` +
-    `<tr>${rowCells('Damage', data.damage, metaDamageArr, data.ytd.damage, metaMaps.apvDamageAnual)}</tr>` +
-    `<tr>${rowCells('POD', data.pod, metaPodArr, data.ytd.pod, metaMaps.apvPodAnual)}</tr>` +
-    `<tr class='tot'>${rowCells('Soma', data.soma, metaOps, data.ytd.soma, metaMaps.apvTotalAnual)}</tr>`;
+  renderClaimApvTable_('tbl-apv-head'+suf, 'tbl-apv'+suf, data, metaMaps);
 }
 
 // Lógica pura de busca+render do RMR — sem tratamento de UI (isso é responsabilidade
@@ -1791,17 +1834,127 @@ function populateApvOverviewMonthSelects(){
   apvOverviewMonthsPopulated = true;
 }
 
+let apvOvUnit = 'pct'; // 'pct' ou 'qtd' — toggle da APV → Visão Geral
+let apvOvCache = null; // { data, campinasData, apvTotalMensal, metaMaps, mensalNacional, mensalCampinas }
+
 async function loadApvOverview(){
   const startYm = document.getElementById('apv-overview-start').value;
   const endYm = document.getElementById('apv-overview-end').value;
   const startDate = `${startYm}-01`;
   const endDate = lastDayOfMonth(endYm);
-  const [data, campinasData, metas] = await Promise.all([
+  const [data, campinasData, metas, mensalNacional, mensalCampinas] = await Promise.all([
     fetchClaimOverview(startDate, endDate),
     fetchClaimOverview(startDate, endDate, 'Campinas'),
     getMetasData(),
+    fetchWebApp('claim-apv'),
+    fetchWebApp('claim-apv', 'Campinas'),
   ]);
-  renderApvOverview(data, campinasData, metas.apv_total.mensal);
+  apvOvCache = { data, campinasData, apvTotalMensal: metas.apv_total.mensal, metaMaps: buildMetaMaps(metas), mensalNacional, mensalCampinas };
+  renderApvOverviewAll_();
+}
+
+// Redesenha tudo a partir do cache (sem refetch) — reaproveitado pelo toggle %/qtd, mesmo
+// padrão de renderIndispOverviewAll_()/indispOvUnit na Indisponibilidade → Visão Geral.
+function renderApvOverviewAll_(){
+  if (!apvOvCache) return;
+  const { data, campinasData, apvTotalMensal, metaMaps, mensalNacional, mensalCampinas } = apvOvCache;
+  renderApvOverview(data, campinasData, apvTotalMensal);
+
+  // Visão mensal — mesmo gráfico+tabela da RMR (renderClaimApvTable_, extraída de
+  // renderClaimApv sem mudar o comportamento dela), exibidos aqui também.
+  renderApvOverviewMonthly_('c-apvOvMonthly', 'tbl-apv-ov-monthly-head', 'tbl-apv-ov-monthly', 'legend-apv-ov-monthly', mensalNacional, metaMaps);
+  renderApvOverviewMonthly_('c-apvOvMonthly-cp', 'tbl-apv-ov-monthly-head-cp', 'tbl-apv-ov-monthly-cp', null, mensalCampinas, metaMaps);
+}
+
+function toggleApvOvUnit(){
+  apvOvUnit = apvOvUnit === 'pct' ? 'qtd' : 'pct';
+  document.getElementById('apv-ov-unit-toggle').textContent =
+    apvOvUnit === 'pct' ? 'Ver: % de reservas' : 'Ver: nº de reservas';
+  renderApvOverviewAll_();
+}
+
+// Visão mensal (Geral OU Campinas) — mesmo padrão de renderIndispOverviewMonthly_: em modo
+// '%' reaproveita a tabela/gráfico já validados da RMR; em modo 'qtd' usa contagens brutas
+// (washN/damageN/podN/totalBookings, já expostos por getClaimApv) — meta convertida usando o
+// total de reservas do MESMO mês (não existe "frota" aqui, o denominador já é a própria
+// contagem de reservas do período).
+function renderApvOverviewMonthly_(elIdChart, elIdHead, elIdBody, elIdLegend, data, metaMaps){
+  const unit = apvOvUnit;
+  const labels = data.meses.map(mesLabel);
+  const labelsYtd = labels.concat(['YTD']);
+
+  if (unit === 'qtd') {
+    const metaOpsN = data.meses.map((ym,i) => {
+      const m = metaMaps.apvTotal[ym] ?? null;
+      return m==null ? null : Math.round(m / 100 * data.totalBookings[i]);
+    });
+    const metaOpsYtdN = metaMaps.apvTotalAnual!=null ? Math.round(metaMaps.apvTotalAnual / 100 * data.ytdN.totalBookings) : null;
+    stackedChart(elIdChart, {
+      labels: labelsYtd,
+      series: [
+        { name:'Wash', color:'#171469', values: data.washN.concat([data.ytdN.wash]) },
+        { name:'Damage', color:'#3B36D8', values: data.damageN.concat([data.ytdN.damage]) },
+        { name:'POD', color:'#B0ADEE', values: data.podN.concat([data.ytdN.pod]) },
+      ],
+      metaTotal: metaOpsN.concat([metaOpsYtdN]), unit: '', decimals: 0, height: 200,
+    });
+  } else {
+    const metaOps = data.meses.map(ym => metaMaps.apvTotal[ym] ?? null);
+    stackedChart(elIdChart, {
+      labels: labelsYtd,
+      series: [
+        { name:'Wash', color:'#171469', values: data.wash.concat([data.ytd.wash]) },
+        { name:'Damage', color:'#3B36D8', values: data.damage.concat([data.ytd.damage]) },
+        { name:'POD', color:'#B0ADEE', values: data.pod.concat([data.ytd.pod]) },
+      ],
+      metaTotal: metaOps.concat([metaMaps.apvTotalAnual]), height: 200,
+    });
+  }
+  if (elIdLegend) buildLegend(elIdLegend, [{name:'Wash',color:'#171469'},{name:'Damage',color:'#3B36D8'},{name:'POD',color:'#B0ADEE'}]);
+
+  renderClaimApvTable_(elIdHead, elIdBody, data, metaMaps, unit);
+}
+
+// Tabela Wash/Damage/POD/Soma por semana/dia — mesmo padrão de
+// renderIndispOverviewSeriesTable_ (coluna "Componente" congelada), só que as linhas são
+// fixas (3 componentes), não uma lista dinâmica de categorias.
+function renderApvOverviewSeriesTable_(elIdHead, elIdBody, periodKeys, labels, seriesObj, apvTotalMensal, unit){
+  const head = `<tr><th>Componente</th>${labels.map(l=>`<th class="num">${l}</th>`).join('')}</tr>`;
+  document.getElementById(elIdHead).innerHTML = head;
+
+  const rows = unit === 'qtd'
+    ? [
+        { name: 'Wash', color: '#171469', arr: seriesObj.washN },
+        { name: 'Damage', color: '#3B36D8', arr: seriesObj.damageN },
+        { name: 'POD', color: '#B0ADEE', arr: seriesObj.podN },
+      ]
+    : [
+        { name: 'Wash', color: '#171469', arr: seriesObj.wash },
+        { name: 'Damage', color: '#3B36D8', arr: seriesObj.damage },
+        { name: 'POD', color: '#B0ADEE', arr: seriesObj.pod },
+      ];
+  const fmt = v => unit === 'qtd' ? String(v) : v.toFixed(2) + '%';
+  const heatMax = Math.max(...rows.flatMap(r => r.arr), 0.01);
+
+  let body = rows.map(r => {
+    const cells = r.arr.map(v =>
+      `<td class='num' style='background:${heatColor(v,0,heatMax)};color:${heatTextColor(v,0,heatMax)}' data-tip='${r.name}: ${fmt(v)}'>${fmt(v)}</td>`
+    ).join('');
+    return `<tr><td><span class='legend-sw' style='background:${r.color};display:inline-block;margin-right:6px'></span>${r.name}</td>${cells}</tr>`;
+  }).join('');
+
+  const somaArr = periodKeys.map((_,i) => unit === 'qtd'
+    ? (seriesObj.washN[i]||0) + (seriesObj.damageN[i]||0) + (seriesObj.podN[i]||0)
+    : round2(seriesObj.wash[i] + seriesObj.damage[i] + seriesObj.pod[i]));
+  const somaCells = somaArr.map((v,i) => {
+    const mPct = metaParaData_(periodKeys[i], apvTotalMensal);
+    const m = unit === 'qtd' ? (mPct==null ? null : Math.round(mPct / 100 * seriesObj.n[i])) : mPct;
+    const cls = (m==null || v<=m) ? 'cc-good' : 'cc-bad';
+    return `<td class='num cc-real ${cls}'>${fmt(v)}</td>`;
+  }).join('');
+  body += `<tr class='tot'><td>Soma</td>${somaCells}</tr>`;
+
+  document.getElementById(elIdBody).innerHTML = body;
 }
 
 // Cor condicional nas tabelas de Visão Geral — vermelho acima da média geral, verde abaixo
@@ -1833,21 +1986,54 @@ const APV_STACK_COLORS = [{name:'Wash',color:'#171469'},{name:'Damage',color:'#3
 function renderApvOverviewTrendBlock(data, apvTotalMensal, opts){
   opts = opts || {};
   const suf = opts.suffix || '';
+  const unit = apvOvUnit;
 
-  const weeklyMeta = data.weekly.labels.map(w => metaParaData_(w, apvTotalMensal));
-  stackedChart('c-apvOvWeekly'+suf, {
-    labels: data.weekly.labels.map(weekLabel_),
-    series: APV_STACK_COLORS.map(s => ({ name: s.name, color: s.color, values: data.weekly[s.name.toLowerCase()] })),
-    metaTotal: weeklyMeta, height: 190,
-  });
+  if (unit === 'qtd') {
+    const weeklyMetaN = data.weekly.labels.map((w,i) => {
+      const m = metaParaData_(w, apvTotalMensal);
+      return m==null ? null : Math.round(m / 100 * data.weekly.n[i]);
+    });
+    stackedChart('c-apvOvWeekly'+suf, {
+      labels: data.weekly.labels.map(weekLabel_),
+      series: APV_STACK_COLORS.map(s => ({ name: s.name, color: s.color, values: data.weekly[s.name.toLowerCase()+'N'] })),
+      metaTotal: weeklyMetaN, unit: '', decimals: 0, height: 190,
+    });
+  } else {
+    const weeklyMeta = data.weekly.labels.map(w => metaParaData_(w, apvTotalMensal));
+    stackedChart('c-apvOvWeekly'+suf, {
+      labels: data.weekly.labels.map(weekLabel_),
+      series: APV_STACK_COLORS.map(s => ({ name: s.name, color: s.color, values: data.weekly[s.name.toLowerCase()] })),
+      metaTotal: weeklyMeta, height: 190,
+    });
+  }
   buildLegend('legend-apv-ov'+suf, APV_STACK_COLORS);
+  renderApvOverviewSeriesTable_(
+    'tbl-apv-ov-weekly-head'+suf, 'tbl-apv-ov-weekly'+suf,
+    data.weekly.labels, data.weekly.labels.map(weekLabel_), data.weekly, apvTotalMensal, unit
+  );
 
-  const last30Meta = data.last30d.labels.map(d => metaParaData_(d, apvTotalMensal));
-  stackedChart('c-apvOvLast30'+suf, {
-    labels: data.last30d.labels.map(dayLabelShort_),
-    series: APV_STACK_COLORS.map(s => ({ name: s.name, color: s.color, values: data.last30d[s.name.toLowerCase()] })),
-    metaTotal: last30Meta, height: 190,
-  });
+  if (unit === 'qtd') {
+    const last30MetaN = data.last30d.labels.map((d,i) => {
+      const m = metaParaData_(d, apvTotalMensal);
+      return m==null ? null : Math.round(m / 100 * data.last30d.n[i]);
+    });
+    stackedChart('c-apvOvLast30'+suf, {
+      labels: data.last30d.labels.map(dayLabelShort_),
+      series: APV_STACK_COLORS.map(s => ({ name: s.name, color: s.color, values: data.last30d[s.name.toLowerCase()+'N'] })),
+      metaTotal: last30MetaN, unit: '', decimals: 0, height: 190,
+    });
+  } else {
+    const last30Meta = data.last30d.labels.map(d => metaParaData_(d, apvTotalMensal));
+    stackedChart('c-apvOvLast30'+suf, {
+      labels: data.last30d.labels.map(dayLabelShort_),
+      series: APV_STACK_COLORS.map(s => ({ name: s.name, color: s.color, values: data.last30d[s.name.toLowerCase()] })),
+      metaTotal: last30Meta, height: 190,
+    });
+  }
+  renderApvOverviewSeriesTable_(
+    'tbl-apv-ov-last30-head'+suf, 'tbl-apv-ov-last30'+suf,
+    data.last30d.labels, data.last30d.labels.map(dayLabelShort_), data.last30d, apvTotalMensal, unit
+  );
 
   if (!suf) {
     const wkD = data.weekly.damage, wkW = data.weekly.wash, wkP = data.weekly.pod;
@@ -1874,7 +2060,11 @@ function renderApvOverview(data, campinasData, apvTotalMensal){
       : 'Sem dado suficiente no período selecionado.'
   );
 
-  document.getElementById('apv-overview-heroes').innerHTML = `
+  document.getElementById('apv-overview-heroes').innerHTML = apvOvUnit === 'qtd' ? `
+    <div class='hero-card c-claim'><div class='hero-eye'>Damage</div><div class='hero-num'>${b.damageN}</div><div class='hero-sub'>de ${b.n.toLocaleString('pt-BR')} reservas avaliadas</div></div>
+    <div class='hero-card c-claim'><div class='hero-eye'>Wash</div><div class='hero-num'>${b.washN}</div></div>
+    <div class='hero-card c-claim'><div class='hero-eye'>POD</div><div class='hero-num'>${b.podN}</div></div>
+  ` : `
     <div class='hero-card c-claim'><div class='hero-eye'>Damage</div><div class='hero-num'>${b.damage.toFixed(2)}%</div><div class='hero-sub'>${b.n.toLocaleString('pt-BR')} reservas avaliadas</div></div>
     <div class='hero-card c-claim'><div class='hero-eye'>Wash</div><div class='hero-num'>${b.wash.toFixed(2)}%</div></div>
     <div class='hero-card c-claim'><div class='hero-eye'>POD</div><div class='hero-num'>${b.pod.toFixed(2)}%</div></div>
@@ -2119,6 +2309,7 @@ document.getElementById('sidebar-backdrop').addEventListener('click', closeMobil
   ['indisp-ov-unit-toggle', 'click', toggleIndispOvUnit],
   ['apv-overview-start', 'change', loadApvOverview],
   ['apv-overview-end', 'change', loadApvOverview],
+  ['apv-ov-unit-toggle', 'click', toggleApvOvUnit],
   ['apv-damage-start', 'change', () => loadApvComponent('damage')],
   ['apv-damage-end', 'change', () => loadApvComponent('damage')],
   ['apv-damage-clear-filter', 'click', () => clearApvComponentGroupFilter('damage')],

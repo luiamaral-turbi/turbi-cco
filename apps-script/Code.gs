@@ -698,20 +698,33 @@ function getClaimApv(startDate, endDate, city) {
   var damage = [];
   var pod = [];
   var soma = [];
+  // Contagens brutas (não %) por mês — usadas só pelo toggle %/quantidade da APV → Visão
+  // Geral (front-end). O cálculo oficial acima (wash/damage/pod/soma em %) não muda em nada.
+  var washN = [];
+  var damageN = [];
+  var podN = [];
+  var somaN = [];
+  var totalBookings = [];
   var totalBookingsSum = 0;
   var washSum = 0;
   var damageSum = 0;
   var podSum = 0;
 
   rows.forEach(function (r) {
-    var totalBookings = Number(r.total_bookings) || 1; // proteção contra zero
-    var washPct = round2_((100 * Number(r.wash_n)) / totalBookings);
-    var damagePct = round2_((100 * Number(r.damage_n)) / totalBookings);
-    var podPct = round2_((100 * Number(r.pod_n)) / totalBookings);
+    var totalBookingsMes = Number(r.total_bookings) || 1; // proteção contra zero
+    var washPct = round2_((100 * Number(r.wash_n)) / totalBookingsMes);
+    var damagePct = round2_((100 * Number(r.damage_n)) / totalBookingsMes);
+    var podPct = round2_((100 * Number(r.pod_n)) / totalBookingsMes);
     wash.push(washPct);
     damage.push(damagePct);
     pod.push(podPct);
     soma.push(round2_(washPct + damagePct + podPct));
+
+    washN.push(Number(r.wash_n));
+    damageN.push(Number(r.damage_n));
+    podN.push(Number(r.pod_n));
+    somaN.push(Number(r.wash_n) + Number(r.damage_n) + Number(r.pod_n));
+    totalBookings.push(Number(r.total_bookings));
 
     totalBookingsSum += Number(r.total_bookings);
     washSum += Number(r.wash_n);
@@ -732,6 +745,8 @@ function getClaimApv(startDate, endDate, city) {
     pod: pod,
     soma: soma,
     ytd: { wash: ytdWash, damage: ytdDamage, pod: ytdPod, soma: ytdSoma },
+    washN: washN, damageN: damageN, podN: podN, somaN: somaN, totalBookings: totalBookings,
+    ytdN: { wash: washSum, damage: damageSum, pod: podSum, soma: washSum + damageSum + podSum, totalBookings: totalBookingsSum },
   };
 }
 
@@ -958,8 +973,9 @@ function mapOverviewRateRow_(r) {
 function claimRatesSeries_(cte, dateExprSql, baseParams) {
   var rows = runQuery_(
     cte +
-      'SELECT ' + dateExprSql + ' AS periodo, ROUND(100*AVG(has_damage),2) damage, ' +
-      'ROUND(100*AVG(has_wash),2) wash, ROUND(100*AVG(has_pod),2) pod ' +
+      'SELECT ' + dateExprSql + ' AS periodo, COUNT(*) AS n, ROUND(100*AVG(has_damage),2) damage, ' +
+      'ROUND(100*AVG(has_wash),2) wash, ROUND(100*AVG(has_pod),2) pod, ' +
+      'SUM(has_damage) AS damage_n, SUM(has_wash) AS wash_n, SUM(has_pod) AS pod_n ' +
       'FROM per_booking GROUP BY periodo ORDER BY periodo',
     baseParams
   );
@@ -968,6 +984,11 @@ function claimRatesSeries_(cte, dateExprSql, baseParams) {
     damage: rows.map(function (r) { return Number(r.damage); }),
     wash: rows.map(function (r) { return Number(r.wash); }),
     pod: rows.map(function (r) { return Number(r.pod); }),
+    // Contagens brutas por período — só pro toggle %/quantidade da APV → Visão Geral.
+    n: rows.map(function (r) { return Number(r.n); }),
+    damageN: rows.map(function (r) { return Number(r.damage_n); }),
+    washN: rows.map(function (r) { return Number(r.wash_n); }),
+    podN: rows.map(function (r) { return Number(r.pod_n); }),
   };
 }
 
@@ -977,7 +998,8 @@ function getClaimOverview(startDate, endDate, city) {
   var cte = claimOverviewBaseCte_(city);
 
   var baseline = runQuery_(
-    cte + 'SELECT COUNT(*) n, ROUND(100*AVG(has_damage),2) damage, ROUND(100*AVG(has_wash),2) wash, ROUND(100*AVG(has_pod),2) pod FROM per_booking',
+    cte + 'SELECT COUNT(*) n, ROUND(100*AVG(has_damage),2) damage, ROUND(100*AVG(has_wash),2) wash, ROUND(100*AVG(has_pod),2) pod, ' +
+      'SUM(has_damage) AS damage_n, SUM(has_wash) AS wash_n, SUM(has_pod) AS pod_n FROM per_booking',
     baseParams
   )[0];
 
@@ -1115,9 +1137,16 @@ function getClaimOverview(startDate, endDate, city) {
     start_date: startDate,
     end_date: endDate,
     city: city || null,
-    baseline: { n: Number(baseline.n), damage: Number(baseline.damage), wash: Number(baseline.wash), pod: Number(baseline.pod) },
+    baseline: {
+      n: Number(baseline.n), damage: Number(baseline.damage), wash: Number(baseline.wash), pod: Number(baseline.pod),
+      damageN: Number(baseline.damage_n), washN: Number(baseline.wash_n), podN: Number(baseline.pod_n),
+    },
     weekly: weeklySeries,
-    last30d: { labels: last30Series.labels, damage: last30Series.damage, wash: last30Series.wash, pod: last30Series.pod, start: last30.start, end: last30.end },
+    last30d: {
+      labels: last30Series.labels, damage: last30Series.damage, wash: last30Series.wash, pod: last30Series.pod,
+      n: last30Series.n, damageN: last30Series.damageN, washN: last30Series.washN, podN: last30Series.podN,
+      start: last30.start, end: last30.end,
+    },
     byCategory: byCategoryRows.map(mapOverviewRateRow_),
     byModel: byModelRows.map(mapOverviewRateRow_),
     byAge: byAgeRows.map(mapOverviewRateRow_),
